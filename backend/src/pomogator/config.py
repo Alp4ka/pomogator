@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     telegram_bot_token: str = ""
     telegram_webapp_url: str = "http://localhost:5173"
+    telegram_socks_proxy_list_url: str = (
+        "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt"
+    )
+    telegram_socks_cache_ttl_seconds: int = 300
+    telegram_socks_probe_timeout_seconds: float = 10.0
+    telegram_socks_max_acquire_attempts: int = 12
     notion_token: str = ""
     notion_countries: list[CountrySource] = Field(default_factory=list)
     admin_telegram_ids: list[int] = Field(default_factory=list)
