@@ -10,21 +10,18 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramNetworkError
 
 from pomogator.config import get_settings
-from pomogator.infrastructure.telegram.socks_pool import SocksProxyPool, telegram_reachable
+from pomogator.infrastructure.telegram.socks_pool import (
+    TELEGRAM_PROBE_URL,
+    SocksProxyPool,
+    https_reachable,
+    resolve_socks_proxy,
+)
 from pomogator.presentation.bot.handlers import dispatcher
 
 log = logging.getLogger(__name__)
 
 HEALTH_INTERVAL_SECONDS = 25.0
 HEALTH_FAILURE_THRESHOLD = 3
-
-
-async def _resolve_initial_proxy(pool: SocksProxyPool) -> str | None:
-    if await telegram_reachable(None):
-        log.info("Telegram reachable directly; SOCKS5 not required")
-        return None
-    log.warning("Telegram is unreachable directly; acquiring SOCKS5 proxy")
-    return await pool.acquire()
 
 
 async def _watch_telegram_health(bot: Bot, stop: asyncio.Event) -> None:
@@ -93,15 +90,17 @@ async def run() -> None:
         probe_timeout=settings.telegram_socks_probe_timeout_seconds,
         max_acquire_attempts=settings.telegram_socks_max_acquire_attempts,
     )
-    proxy_url = await _resolve_initial_proxy(pool)
+    proxy_url = await resolve_socks_proxy(pool, probe_url=TELEGRAM_PROBE_URL, label="Telegram")
 
     while True:
         session = AiohttpSession(proxy=proxy_url) if proxy_url else AiohttpSession()
         bot = Bot(settings.telegram_bot_token, session=session)
         try:
-            if proxy_url and not await telegram_reachable(proxy_url):
+            if proxy_url and not await https_reachable(
+                TELEGRAM_PROBE_URL, proxy_url, timeout_seconds=pool.probe_timeout
+            ):
                 pool.mark_failed(proxy_url)
-                proxy_url = await pool.acquire()
+                proxy_url = await pool.acquire(probe_url=TELEGRAM_PROBE_URL)
                 continue
             await _run_polling(bot, proxy_url)
         except TelegramNetworkError as exc:
@@ -116,16 +115,15 @@ async def run() -> None:
         else:
             log.warning("Direct Telegram path failed; switching to SOCKS5")
         try:
-            proxy_url = await pool.acquire()
+            proxy_url = await pool.acquire(probe_url=TELEGRAM_PROBE_URL)
         except Exception:
             log.exception("Unable to acquire SOCKS5 proxy; retrying soon")
             proxy_url = None
             await asyncio.sleep(5.0)
-            if await telegram_reachable(None):
-                continue
-            try:
-                proxy_url = await pool.acquire()
-            except Exception:
+            proxy_url = await resolve_socks_proxy(
+                pool, probe_url=TELEGRAM_PROBE_URL, label="Telegram"
+            )
+            if proxy_url is None and not await https_reachable(TELEGRAM_PROBE_URL, None):
                 await asyncio.sleep(15.0)
                 continue
         await asyncio.sleep(1.0)

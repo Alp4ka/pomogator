@@ -55,18 +55,19 @@ Caddy нужен для Mini App (публичный HTTPS), не для пол�
 - Изображения скачиваются при sync, валидируются по MIME/размеру, отдаются авторизованным endpoint.
 - HTML из Notion не хранится и не рендерится. Новые блоки — через JSON-схему и явный React renderer.
 
-## Telegram transport (SOCKS5)
+## SOCKS5 transport (Telegram + Notion)
 
-На части VPS `api.telegram.org` недоступен напрямую.
+На части VPS `api.telegram.org` и `api.notion.com` недоступны напрямую (часто HTML 403 от Cloudflare).
 
-1. При старте `bot` проверяет прямой доступ к Telegram.
-2. Если недоступен — скачивает SOCKS5-список из `TELEGRAM_SOCKS_PROXY_LIST_URL` (по умолчанию [hookzof/socks5_list](https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt)).
-3. Выбирает **случайный** рабочий прокси и держит его.
-4. Прокси **не** меняется на каждый запрос — только при инициализации и после сетевых сбоев (health-check).
-5. Список обновляется запросом к raw-файлу на GitHub; клонировать репозиторий списка не нужно.
-6. MTProto-прокси (`t.me/proxy?...`) **не** подходят для Bot API / aiogram — только SOCKS5/HTTP.
+1. При старте `bot` / sync-задачи проверяется прямой доступ к нужному API.
+2. Если недоступен — скачивается SOCKS5-список из `TELEGRAM_SOCKS_PROXY_LIST_URL` (по умолчанию [hookzof/socks5_list](https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt)).
+3. Выбирается **случайный** рабочий прокси (probe: Telegram `/` или Notion `/v1/users/me`).
+4. Прокси **не** меняется на каждый запрос — только при инициализации и после сетевых сбоев.
+5. HTML-ответы считаются провалом probe (geo-block), JSON/не-HTML — успехом.
+6. Список обновляется запросом к raw-файлу на GitHub; клонировать репозиторий списка не нужно.
+7. MTProto-прокси (`t.me/proxy?...`) **не** подходят — только SOCKS5/HTTP.
 
-Код: `infrastructure/telegram/socks_pool.py`, оркестрация в `polling.py`.
+Код: `infrastructure/telegram/socks_pool.py`; оркестрация в `polling.py` и `worker.py`.
 
 ## Стиль и дополнение кода
 

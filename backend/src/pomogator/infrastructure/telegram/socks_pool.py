@@ -7,13 +7,13 @@ import random
 import time
 from urllib.parse import urlparse
 
-import aiohttp
 import httpx
-from aiohttp_socks import ProxyConnector
 
 log = logging.getLogger(__name__)
 
 DEFAULT_PROXY_LIST_URL = "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt"
+TELEGRAM_PROBE_URL = "https://api.telegram.org"
+NOTION_PROBE_URL = "https://api.notion.com/v1/users/me"
 
 
 def parse_proxy_lines(text: str) -> list[str]:
@@ -40,24 +40,53 @@ def parse_proxy_lines(text: str) -> list[str]:
     return proxies
 
 
+async def https_reachable(
+    url: str,
+    proxy_url: str | None = None,
+    *,
+    timeout_seconds: float = 10.0,
+    headers: dict[str, str] | None = None,
+) -> bool:
+    """Return True when ``url`` responds with a non-HTML body through optional SOCKS5."""
+    try:
+        async with httpx.AsyncClient(
+            proxy=proxy_url,
+            timeout=timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(url, headers=headers)
+            content_type = response.headers.get("content-type", "").lower()
+            # Cloudflare/geo blocks often return HTML 403/503 instead of the real API.
+            if "text/html" in content_type:
+                return False
+            return True
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        log.debug("HTTPS probe failed via %s for %s: %s", proxy_url or "direct", url, exc)
+        return False
+
+
 async def telegram_reachable(
     proxy_url: str | None = None, *, timeout_seconds: float = 10.0
 ) -> bool:
-    """Return True when ``api.telegram.org`` responds through optional SOCKS5."""
-    connector: aiohttp.BaseConnector | None = None
-    try:
-        if proxy_url:
-            connector = ProxyConnector.from_url(proxy_url)
-        timeout_cfg = aiohttp.ClientTimeout(total=timeout_seconds)
-        async with aiohttp.ClientSession(connector=connector, timeout=timeout_cfg) as session:
-            async with session.get("https://api.telegram.org") as response:
-                return response.status < 500
-    except Exception as exc:  # noqa: BLE001 — probe must never raise
-        log.debug("Telegram probe failed via %s: %s", proxy_url or "direct", exc)
-        return False
-    finally:
-        if connector is not None and not connector.closed:
-            await connector.close()
+    return await https_reachable(TELEGRAM_PROBE_URL, proxy_url, timeout_seconds=timeout_seconds)
+
+
+async def notion_reachable(
+    token: str,
+    proxy_url: str | None = None,
+    *,
+    timeout_seconds: float = 10.0,
+) -> bool:
+    return await https_reachable(
+        NOTION_PROBE_URL,
+        proxy_url,
+        timeout_seconds=timeout_seconds,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Notion-Version": "2022-06-28",
+            "Accept": "application/json",
+        },
+    )
 
 
 class SocksProxyPool:
@@ -88,7 +117,6 @@ class SocksProxyPool:
             raise RuntimeError(f"SOCKS5 list is empty: {self.list_url}")
         self._proxies = proxies
         self._fetched_at = time.monotonic()
-        # Drop failure marks for proxies that disappeared from the fresh list.
         self._failed &= set(proxies)
         log.info("Loaded %s SOCKS5 proxies from %s", len(proxies), self.list_url)
 
@@ -115,17 +143,47 @@ class SocksProxyPool:
             raise RuntimeError("No SOCKS5 proxies available")
         return random.choice(candidates)
 
-    async def acquire(self) -> str:
-        """Pick a random proxy that can reach Telegram."""
+    async def acquire(
+        self,
+        *,
+        probe_url: str = TELEGRAM_PROBE_URL,
+        headers: dict[str, str] | None = None,
+    ) -> str:
+        """Pick a random proxy that can reach ``probe_url``."""
         last_error = "no candidates"
         for _ in range(self.max_acquire_attempts):
             proxy = await self.next_candidate()
-            if await telegram_reachable(proxy, timeout_seconds=self.probe_timeout):
-                log.info("Acquired working SOCKS5 proxy: %s", proxy)
+            if await https_reachable(
+                probe_url,
+                proxy,
+                timeout_seconds=self.probe_timeout,
+                headers=headers,
+            ):
+                log.info("Acquired working SOCKS5 proxy for %s: %s", probe_url, proxy)
                 return proxy
             self.mark_failed(proxy)
             last_error = proxy
         raise RuntimeError(
             f"Failed to acquire working SOCKS5 proxy after {self.max_acquire_attempts} attempts "
-            f"(last={last_error})"
+            f"(probe={probe_url}, last={last_error})"
         )
+
+
+async def resolve_socks_proxy(
+    pool: SocksProxyPool,
+    *,
+    probe_url: str,
+    headers: dict[str, str] | None = None,
+    label: str,
+) -> str | None:
+    """Return None when direct access works, otherwise a working SOCKS5 URL."""
+    if await https_reachable(
+        probe_url,
+        None,
+        timeout_seconds=pool.probe_timeout,
+        headers=headers,
+    ):
+        log.info("%s reachable directly; SOCKS5 not required", label)
+        return None
+    log.warning("%s unreachable directly; acquiring SOCKS5 proxy", label)
+    return await pool.acquire(probe_url=probe_url, headers=headers)
