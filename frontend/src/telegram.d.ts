@@ -1,0 +1,1 @@
+interface TelegramWebApp {initData:string; colorScheme:"light"|"dark"; ready():void; expand():void; BackButton:{show():void;hide():void;onClick(fn:()=>void):void;offClick(fn:()=>void):void}; HapticFeedback:{impactOccurred(style:string):void}} interface Window {Telegram:{WebApp:TelegramWebApp}}

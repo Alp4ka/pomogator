@@ -1,0 +1,57 @@
+services:
+  api:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    env_file: .env
+    environment: {DATABASE_URL: "postgresql+asyncpg://pomogator:${POSTGRES_PASSWORD}@postgres:5432/pomogator"}
+    depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  bot:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    command: pomogator-bot
+    env_file: .env
+    environment: {DATABASE_URL: "postgresql+asyncpg://pomogator:${POSTGRES_PASSWORD}@postgres:5432/pomogator"}
+    depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}}
+    restart: unless-stopped
+  worker:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    command: celery -A pomogator.worker.celery worker -l INFO
+    env_file: .env
+    environment: {DATABASE_URL: "postgresql+asyncpg://pomogator:${POSTGRES_PASSWORD}@postgres:5432/pomogator"}
+    depends_on: [postgres, redis]
+    restart: unless-stopped
+  scheduler:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    command: celery -A pomogator.worker.celery beat -l INFO --schedule /tmp/celerybeat-schedule
+    env_file: .env
+    environment: {DATABASE_URL: "postgresql+asyncpg://pomogator:${POSTGRES_PASSWORD}@postgres:5432/pomogator"}
+    depends_on: [worker]
+    restart: unless-stopped
+  frontend:
+    build: {context: ., dockerfile: frontend/Dockerfile}
+    restart: unless-stopped
+  postgres:
+    image: postgres:17-alpine
+    ports: ["127.0.0.1:55432:5432"]
+    environment: {POSTGRES_DB: pomogator, POSTGRES_USER: pomogator, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U pomogator"], interval: 5s, timeout: 3s, retries: 20}
+    restart: unless-stopped
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    volumes: [redis_data:/data]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20}
+    restart: unless-stopped
+  caddy:
+    image: caddy:2.10-alpine
+    env_file: .env
+    ports: ["80:80", "443:443"]
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data"]
+    depends_on: {api: {condition: service_healthy}, frontend: {condition: service_started}}
+    restart: unless-stopped
+volumes: {postgres_data: {}, redis_data: {}, caddy_data: {}}
