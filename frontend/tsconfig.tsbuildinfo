@@ -1,1 +1,1 @@
-{"root":["./src/content.test.ts","./src/main.tsx","./src/telegram.d.ts","./src/vite-env.d.ts"],"version":"6.0.3"}
+{"root":["./src/content.test.ts","./src/document.tsx","./src/main.tsx","./src/session.test.ts","./src/session.ts","./src/telegram.d.ts","./src/theme.ts","./src/vite-env.d.ts","./src/youtube-embed.tsx","./src/youtube.test.ts","./src/youtube.ts","./src/offline/content-api.test.ts","./src/offline/content-api.ts","./src/offline/db.ts"],"version":"6.0.3"}

@@ -158,13 +158,17 @@ function sleep(ms: number): Promise<void> {
 export async function waitForCountrySync(
   slug: string,
   baselineVersion: number,
-  options?: { timeoutMs?: number },
+  options?: {
+    timeoutMs?: number;
+    onTick?: (info: { elapsedMs: number; status: SyncStatus }) => void;
+  },
 ): Promise<SyncStatus> {
   const timeoutMs = options?.timeoutMs ?? 180_000;
   const started = Date.now();
   let last: SyncStatus | undefined;
   while (Date.now() - started < timeoutMs) {
     last = await getCountrySyncStatus(slug);
+    options?.onTick?.({ elapsedMs: Date.now() - started, status: last });
     if (last.content_version > baselineVersion) return last;
     if (last.status === "failed") return last;
     await sleep(1500);

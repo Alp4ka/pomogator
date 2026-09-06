@@ -292,6 +292,8 @@ function App() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncPhase, setSyncPhase] = useState("");
   const [syncError, setSyncError] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
   const [paywall, setPaywall] = useState<{ title: string; resumeId?: string }>();
@@ -591,24 +593,47 @@ function App() {
 
   async function refreshFromNotion() {
     if (!navigator.onLine) {
-      setSyncError("Нужен интернет, чтобы обновить материалы из Notion.");
+      setSyncError("Нужен интернет, чтобы обновить материалы.");
       return;
     }
     setSyncing(true);
+    setSyncProgress(4);
+    setSyncPhase("Готовим обновление…");
     setSyncError("");
     setSyncNotice("");
     const resumePageId = pageIdRef.current;
     try {
       await flushFieldQueue();
+      setSyncProgress(12);
+      setSyncPhase("Отправляем запрос на обновление…");
       const baseline = country?.content_version ?? 0;
       const started = await requestCountrySync(slug);
-      const result = await waitForCountrySync(slug, started.content_version ?? baseline);
+      setSyncProgress(22);
+      setSyncPhase("Загружаем материалы…");
+      const result = await waitForCountrySync(slug, started.content_version ?? baseline, {
+        onTick: ({ elapsedMs, status }) => {
+          // Asymptotic climb toward ~88% while waiting for the worker.
+          const waited = Math.min(1, elapsedMs / 90_000);
+          const base = status.status === "running" || status.status === "queued" ? 28 : 22;
+          const next = Math.min(88, Math.round(base + waited * 60));
+          setSyncProgress((value) => Math.max(value, next));
+          setSyncPhase(
+            status.status === "running"
+              ? "Идёт загрузка материалов…"
+              : status.status === "queued"
+                ? "В очереди на обновление…"
+                : "Проверяем готовность…",
+          );
+        },
+      });
       if (result.status === "failed") {
         setSyncError(
           "Не удалось обновить материалы. Подождите пару минут и попробуйте снова.",
         );
         return;
       }
+      setSyncProgress(92);
+      setSyncPhase("Обновляем страницу…");
       const { data: nextCountry } = await getCountry(slug);
       setCountry(nextCountry);
       setOfflineMode(false);
@@ -617,8 +642,11 @@ function App() {
         await loadPage(targetId, { history: "none" });
         void prefetchCountryTree(nextCountry.root_page_id ?? targetId);
       }
+      setSyncProgress(100);
+      setSyncPhase("Готово");
       setSyncNotice("Материалы обновлены. Ваши ответы в полях сохранены.");
       tg?.HapticFeedback.impactOccurred("light");
+      await new Promise((resolve) => window.setTimeout(resolve, 400));
     } catch (reason) {
       if (handleSessionFailure(reason)) return;
       setSyncError(
@@ -628,6 +656,8 @@ function App() {
       );
     } finally {
       setSyncing(false);
+      setSyncProgress(0);
+      setSyncPhase("");
     }
   }
 
@@ -825,9 +855,23 @@ function App() {
           )}
         </div>
         {syncing ? (
-          <p className="sync-banner" role="status">
-            Загружаем свежие страницы из Notion. Поля и галочки сохраняются.
-          </p>
+          <div className="sync-banner sync-progress" role="status" aria-live="polite">
+            <div className="sync-progress-head">
+              <span>{syncPhase || "Обновляем материалы…"}</span>
+              <span className="sync-progress-pct">{syncProgress}%</span>
+            </div>
+            <div
+              className="sync-progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={syncProgress}
+              aria-label="Прогресс обновления"
+            >
+              <div className="sync-progress-fill" style={{ width: `${syncProgress}%` }} />
+            </div>
+            <p className="sync-progress-hint">Поля и галочки сохраняются.</p>
+          </div>
         ) : null}
         {syncNotice ? (
           <p className="sync-banner is-ok" role="status">
