@@ -76,6 +76,13 @@ class NotionClient:
         return "".join(part.get("plain_text", "") for part in rich)
 
     @staticmethod
+    def normalize_notion_id(value: str | None) -> str | None:
+        if not value:
+            return None
+        cleaned = value.replace("-", "").lower()
+        return cleaned if _PAGE_ID.fullmatch(cleaned) else None
+
+    @staticmethod
     def notion_page_id(url: str) -> str | None:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"}:
@@ -90,6 +97,32 @@ class NotionClient:
             return None
         match = _PAGE_ID.search(parsed.path.replace("-", ""))
         return match.group(1).lower() if match else None
+
+    def _internal_notion_id(self, part: dict[str, Any]) -> str | None:
+        href = part.get("href")
+        if href:
+            notion_id = self.notion_page_id(str(href))
+            if notion_id:
+                return notion_id
+        mention = part.get("mention") or {}
+        if part.get("type") == "mention" and mention.get("type") == "page":
+            page = mention.get("page") or {}
+            return self.normalize_notion_id(str(page.get("id") or ""))
+        return None
+
+    async def _rich(self, rich: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        output = []
+        for part in rich:
+            text = part.get("plain_text", "")
+            item: dict[str, Any] = {"text": text, "annotations": part.get("annotations", {})}
+            if notion_id := self._internal_notion_id(part):
+                item["link"] = {"type": "internal", "notion_page_id": notion_id}
+            else:
+                href = part.get("href")
+                if href and (safe_url := self.safe_external_url(str(href))):
+                    item["link"] = {"type": "external", "url": safe_url}
+            output.append(item)
+        return output
 
     @staticmethod
     def safe_external_url(url: str) -> str | None:
@@ -168,21 +201,6 @@ class NotionClient:
             "has_row_header": bool(value.get("has_row_header")),
             "rows": rows,
         }
-
-    async def _rich(self, rich: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        output = []
-        for part in rich:
-            text = part.get("plain_text", "")
-            href = part.get("href")
-            item: dict[str, Any] = {"text": text, "annotations": part.get("annotations", {})}
-            if href:
-                notion_id = self.notion_page_id(href)
-                if notion_id:
-                    item["link"] = {"type": "internal", "notion_page_id": notion_id}
-                elif safe_url := self.safe_external_url(href):
-                    item["link"] = {"type": "external", "url": safe_url}
-            output.append(item)
-        return output
 
     async def _image(self, block: dict[str, Any]) -> dict[str, Any]:
         data = block["image"]

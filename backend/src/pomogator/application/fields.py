@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 from uuid import UUID
 
@@ -9,17 +10,38 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pomogator.domain.fields import (
+    FieldSpec,
     annotate_document_fields,
     default_field_values,
     normalize_field_value,
 )
+from pomogator.domain.links import remap_internal_links
 from pomogator.infrastructure.db.models import FieldStateModel, PageModel
+
+
+async def country_page_index(session: AsyncSession, country_id: UUID) -> dict[str, UUID]:
+    rows = await session.execute(
+        select(PageModel.notion_page_id, PageModel.id).where(
+            PageModel.country_id == country_id,
+            PageModel.archived.is_(False),
+        )
+    )
+    return {notion_id: page_id for notion_id, page_id in rows.all()}
+
+
+async def prepare_page_document(
+    session: AsyncSession, page: PageModel
+) -> tuple[list[dict[str, Any]], dict[str, FieldSpec]]:
+    """Remap Notion internal links, then annotate interactive field runs."""
+    known = await country_page_index(session, page.country_id)
+    document = remap_internal_links(deepcopy(page.document), known)
+    return annotate_document_fields(document)
 
 
 async def load_field_states(
     session: AsyncSession, *, user_id: UUID, page: PageModel
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    document, specs = annotate_document_fields(page.document)
+    document, specs = await prepare_page_document(session, page)
     defaults = default_field_values(specs)
     if not defaults:
         return document, {}
@@ -44,7 +66,7 @@ async def set_field_state(
     field_key: str,
     value: str,
 ) -> dict[str, str]:
-    _, specs = annotate_document_fields(page.document)
+    _document, specs = await prepare_page_document(session, page)
     if field_key not in specs:
         raise KeyError(field_key)
     spec = specs[field_key]

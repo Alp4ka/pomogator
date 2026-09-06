@@ -33,6 +33,65 @@ import "./style.css";
 
 type Child = { id: string; title: string; locked: boolean };
 type HistoryItem = { id: string; title: string };
+type NavState = { pageId: string; history: HistoryItem[] };
+
+function navStorageKey(slug: string): string {
+  return `pomogator:nav:${slug}`;
+}
+
+function readQueryPageId(): string | null {
+  const value = new URLSearchParams(location.search).get("page")?.trim();
+  return value || null;
+}
+
+function writeQueryPageId(slug: string, pageId: string | null): void {
+  const params = new URLSearchParams(location.search);
+  params.set("country", slug);
+  if (pageId) params.set("page", pageId);
+  else params.delete("page");
+  const query = params.toString();
+  const next = `${location.pathname}${query ? `?${query}` : ""}${location.hash}`;
+  if (`${location.pathname}${location.search}${location.hash}` === next) return;
+  window.history.replaceState(null, "", next);
+}
+
+function readStoredNav(slug: string): NavState | null {
+  try {
+    const raw = sessionStorage.getItem(navStorageKey(slug));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as NavState;
+    if (typeof parsed?.pageId !== "string" || !Array.isArray(parsed.history)) return null;
+    const history = parsed.history.filter(
+      (item): item is HistoryItem =>
+        !!item && typeof item.id === "string" && typeof item.title === "string",
+    );
+    return history.length ? { pageId: parsed.pageId, history } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredNav(slug: string, pageId: string, history: HistoryItem[]): void {
+  try {
+    sessionStorage.setItem(navStorageKey(slug), JSON.stringify({ pageId, history }));
+  } catch {
+    // Ignore quota / private mode failures.
+  }
+}
+
+function restoreHistoryForPage(
+  targetId: string,
+  title: string,
+  stored: NavState | null,
+  root?: { id: string; title: string },
+): HistoryItem[] {
+  if (stored) {
+    const index = stored.history.findIndex((item) => item.id === targetId);
+    if (index >= 0) return stored.history.slice(0, index + 1);
+  }
+  if (root && root.id !== targetId) return [root, { id: targetId, title }];
+  return [{ id: targetId, title }];
+}
 
 applyTheme();
 registerOfflineShellWorker();
@@ -279,7 +338,10 @@ function App() {
   );
 
   const loadPage = useCallback(
-    async (id: string, options?: { history?: "push" | "none" | "reset" }) => {
+    async (
+      id: string,
+      options?: { history?: "push" | "none" | "reset" },
+    ): Promise<Page | null> => {
       const historyMode = options?.history ?? "push";
       setLoading(true);
       setError("");
@@ -292,32 +354,51 @@ function App() {
         setPageId(id);
         setPaywall(undefined);
         setBuyError("");
-        if (historyMode === "reset") setHistory([{ id: next.id, title: next.title }]);
-        else if (historyMode === "push") {
-          setHistory((items) =>
-            items.at(-1)?.id === next.id ? items : [...items, { id: next.id, title: next.title }],
-          );
+        writeQueryPageId(slug, next.id);
+        if (historyMode === "reset") {
+          const trail = [{ id: next.id, title: next.title }];
+          setHistory(trail);
+          writeStoredNav(slug, next.id, trail);
+        } else if (historyMode === "push") {
+          setHistory((items) => {
+            const trail =
+              items.at(-1)?.id === next.id
+                ? items
+                : [...items, { id: next.id, title: next.title }];
+            writeStoredNav(slug, next.id, trail);
+            return trail;
+          });
+        } else {
+          setHistory((items) => {
+            const trail = items.length ? items : [{ id: next.id, title: next.title }];
+            writeStoredNav(slug, next.id, trail);
+            return trail;
+          });
         }
+        return next;
       } catch (reason) {
-        if (handleSessionFailure(reason)) return;
+        if (handleSessionFailure(reason)) return null;
         if (reason instanceof ApiError && reason.status === 402) {
+          writeQueryPageId(slug, id);
           setPaywall({ title: "Материал полного доступа", resumeId: id });
-          return;
+          return null;
         }
         if (reason instanceof Error && reason.message === "paid") {
+          writeQueryPageId(slug, id);
           setPaywall({ title: "Материал полного доступа", resumeId: id });
-          return;
+          return null;
         }
         setError(
           !navigator.onLine
             ? "Нет сети и страница ещё не сохранена офлайн. Откройте миниапп онлайн один раз."
             : "Не удалось загрузить статью",
         );
+        return null;
       } finally {
         setLoading(false);
       }
     },
-    [handleSessionFailure],
+    [handleSessionFailure, slug],
   );
 
   const bootstrapCountry = useCallback(async () => {
@@ -332,10 +413,27 @@ function App() {
       const { data: value, meta } = await getCountry(slug);
       setOfflineMode(meta.fromCache);
       setCountry(value);
-      if (value.root_page_id) {
-        await loadPage(value.root_page_id, { history: "reset" });
-        if (!meta.fromCache) void prefetchCountryTree(value.root_page_id);
-      } else setError("Материалы ещё индексируются");
+      if (!value.root_page_id) {
+        setError("Материалы ещё индексируются");
+        return;
+      }
+      const stored = readStoredNav(slug);
+      const targetId = readQueryPageId() || stored?.pageId || value.root_page_id;
+      const loaded = await loadPage(targetId, { history: "none" });
+      if (loaded) {
+        const root =
+          value.root_page_id === loaded.id
+            ? undefined
+            : { id: value.root_page_id, title: value.title };
+        const trail = restoreHistoryForPage(loaded.id, loaded.title, stored, root);
+        setHistory(trail);
+        writeStoredNav(slug, loaded.id, trail);
+      } else if (targetId !== value.root_page_id) {
+        // Deep link failed (offline miss / deleted) — fall back to country root.
+        const root = await loadPage(value.root_page_id, { history: "reset" });
+        if (!root) setError("Не удалось открыть страну");
+      }
+      if (!meta.fromCache) void prefetchCountryTree(value.root_page_id);
     } catch (reason) {
       if (handleSessionFailure(reason)) return;
       setError(

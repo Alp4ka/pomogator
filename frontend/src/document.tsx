@@ -167,7 +167,7 @@ export function RichText({
             </a>
           );
         }
-        if (item.link?.type === "internal") {
+        if (item.link?.type === "internal" && item.link.page_id) {
           const pageId = item.link.page_id;
           node = (
             <button type="button" className="text-link" onClick={() => onInternal(pageId)}>
@@ -275,7 +275,7 @@ export function FieldRuns({
               </a>
             );
           }
-          if (run.link?.type === "internal") {
+          if (run.link?.type === "internal" && run.link.page_id) {
             const pageId = run.link.page_id;
             node = (
               <button type="button" className="text-link" onClick={() => onInternal(pageId)}>

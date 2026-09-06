@@ -3,8 +3,10 @@ from uuid import UUID
 
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from pomogator.config import CountrySource
+from pomogator.domain.links import remap_internal_links
 from pomogator.infrastructure.db.models import (
     CountryModel,
     ImageModel,
@@ -119,15 +121,8 @@ class SyncCountry:
             for page in await self.session.scalars(
                 select(PageModel).where(PageModel.country_id == country.id)
             ):
-                for block in page.document:
-                    for rich in block.get("rich_text", []):
-                        link = rich.get("link") or {}
-                        if link.get("type") == "internal":
-                            notion_page_id = link.pop("notion_page_id", "")
-                            if target := known.get(notion_page_id):
-                                link["page_id"] = str(target)
-                            else:
-                                rich.pop("link", None)
+                page.document = remap_internal_links(list(page.document), known)
+                flag_modified(page, "document")
             country.content_version += 1
             run.status = "succeeded"
             run.finished_at = datetime.now(UTC)

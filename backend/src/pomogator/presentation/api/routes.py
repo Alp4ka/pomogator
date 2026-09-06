@@ -13,11 +13,10 @@ from pomogator.application.content_sync import (
     request_country_sync,
     sync_status_payload,
 )
-from pomogator.application.fields import load_field_states, set_field_state
+from pomogator.application.fields import load_field_states, prepare_page_document, set_field_state
 from pomogator.application.payments import PurchaseError, purchase_country_access
 from pomogator.application.pdf_export import export_page_pdf
 from pomogator.domain.content import AccessLevel
-from pomogator.domain.fields import annotate_document_fields
 from pomogator.infrastructure.db.base import session_dependency
 from pomogator.infrastructure.db.models import (
     ImageModel,
@@ -174,7 +173,7 @@ async def page_pdf(page_id: UUID, ctx: Context) -> Response:
     paid = await repo.entitled(user.id, item.country_id)
     if item.access_level == AccessLevel.PAID and not paid:
         raise HTTPException(402, "Country access required")
-    document, _fields = annotate_document_fields(item.document)
+    document, _fields_specs = await prepare_page_document(ctx.session, item)
     pdf_bytes, filename, _export_id = await export_page_pdf(
         ctx.session,
         user=user,
