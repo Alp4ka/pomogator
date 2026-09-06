@@ -580,7 +580,9 @@ function App() {
       setExportError(
         !navigator.onLine
           ? "PDF недоступен офлайн. Подключите интернет."
-          : "Не удалось сохранить PDF. Попробуйте ещё раз.",
+          : reason instanceof ApiError && reason.message === "download denied"
+            ? "Скачивание отклонено. Разрешите сохранение файла в Telegram."
+            : "Не удалось сохранить PDF. Попробуйте ещё раз.",
       );
     } finally {
       setExporting(false);

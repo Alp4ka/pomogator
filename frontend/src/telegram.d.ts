@@ -24,6 +24,11 @@ interface TelegramWebApp {
     offClick(fn: () => void): void;
   };
   HapticFeedback: { impactOccurred(style: string): void };
+  downloadFile?(
+    params: { url: string; file_name: string },
+    callback?: (accepted: boolean) => void,
+  ): void;
+  openLink?(url: string, options?: { try_instant_view?: boolean }): void;
 }
 
 interface Window {

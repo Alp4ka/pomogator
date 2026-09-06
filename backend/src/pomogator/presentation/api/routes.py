@@ -15,6 +15,7 @@ from pomogator.application.content_sync import (
 )
 from pomogator.application.fields import load_field_states, prepare_page_document, set_field_state
 from pomogator.application.payments import PurchaseError, purchase_country_access
+from pomogator.application.pdf_download import pop_pdf_download, store_pdf_download
 from pomogator.application.pdf_export import export_page_pdf
 from pomogator.domain.content import AccessLevel
 from pomogator.infrastructure.db.base import session_dependency
@@ -28,6 +29,12 @@ from pomogator.infrastructure.db.repositories import ContentRepository
 from pomogator.presentation.api.auth import TelegramIdentity, telegram_identity
 
 router = APIRouter(prefix="/api")
+
+_TELEGRAM_WEB_ORIGINS = (
+    "https://web.telegram.org",
+    "https://webk.telegram.org",
+    "https://webz.telegram.org",
+)
 
 
 @dataclass(slots=True)
@@ -164,8 +171,37 @@ async def page_field(
     return {"fields": fields}
 
 
+@router.post("/pages/{page_id}/pdf")
+async def page_pdf_link(page_id: UUID, ctx: Context, request: Request) -> dict[str, str]:
+    """Create a short-lived public download URL for Telegram.WebApp.downloadFile."""
+    repo, user = ctx.repo, ctx.user
+    item = await repo.page(page_id)
+    if not item or item.archived:
+        raise HTTPException(404, "Page not found")
+    paid = await repo.entitled(user.id, item.country_id)
+    if item.access_level == AccessLevel.PAID and not paid:
+        raise HTTPException(402, "Country access required")
+    document, _fields_specs = await prepare_page_document(ctx.session, item)
+    pdf_bytes, filename, _export_id = await export_page_pdf(
+        ctx.session,
+        user=user,
+        page_id=item.id,
+        country_id=item.country_id,
+        title=item.title,
+        document=document,
+        entitled=paid,
+    )
+    redis = request.app.state.redis
+    token = await store_pdf_download(redis, pdf_bytes=pdf_bytes, filename=filename)
+    return {
+        "url": f"/api/pdf-downloads/{token}",
+        "file_name": filename,
+    }
+
+
 @router.get("/pages/{page_id}/pdf")
-async def page_pdf(page_id: UUID, ctx: Context) -> Response:
+async def page_pdf(page_id: UUID, ctx: Context, request: Request) -> Response:
+    """Authenticated direct PDF bytes (fallback outside Telegram downloadFile)."""
     repo, user = ctx.repo, ctx.user
     item = await repo.page(page_id)
     if not item or item.archived:
@@ -191,6 +227,31 @@ async def page_pdf(page_id: UUID, ctx: Context) -> Response:
         headers={
             "Content-Disposition": disposition,
             "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/pdf-downloads/{token}")
+async def pdf_download(token: str, request: Request) -> Response:
+    """One-shot public PDF download used by Telegram Mini App downloadFile."""
+    if len(token) < 16 or len(token) > 128 or "/" in token:
+        raise HTTPException(404, "Download not found")
+    redis = request.app.state.redis
+    stored = await pop_pdf_download(redis, token)
+    if stored is None:
+        raise HTTPException(404, "Download expired or not found")
+    pdf_bytes, filename = stored
+    ascii_name = "guide.pdf"
+    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+    origin = request.headers.get("origin", "")
+    allow_origin = origin if origin in _TELEGRAM_WEB_ORIGINS else "https://web.telegram.org"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": disposition,
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": allow_origin,
         },
     )
 

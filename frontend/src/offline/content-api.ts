@@ -173,18 +173,54 @@ export async function waitForCountrySync(
 }
 
 export async function downloadPagePdf(pageId: string, title: string): Promise<void> {
-  const response = await fetch(`/api/pages/${pageId}/pdf`, {
-    headers: authHeaders(),
-    cache: "no-store",
-  });
-  if (response.status === 401) throw new ApiError(401, "unauthorized");
-  if (response.status === 402) throw new ApiError(402, "paid");
+  const fallbackName = `${title.replace(/[\\/:*?"<>|]+/g, "").trim() || "guide"}.pdf`;
+  const link = await networkJson<{ url: string; file_name: string }>(
+    `/api/pages/${pageId}/pdf`,
+    { method: "POST" },
+  );
+  const absoluteUrl = new URL(link.url, window.location.origin).href;
+  const fileName = link.file_name || fallbackName;
+  const tg = window.Telegram?.WebApp;
+
+  if (typeof tg?.downloadFile === "function") {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const finish = (action: () => void) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        action();
+      };
+      const timer = window.setTimeout(() => finish(resolve), 2500);
+      try {
+        tg.downloadFile!({ url: absoluteUrl, file_name: fileName }, (accepted) => {
+          if (accepted === false) {
+            finish(() => reject(new ApiError(0, "download denied")));
+          } else {
+            finish(resolve);
+          }
+        });
+      } catch (error) {
+        finish(() =>
+          reject(error instanceof Error ? error : new Error("download failed")),
+        );
+      }
+    });
+    return;
+  }
+
+  if (typeof tg?.openLink === "function") {
+    tg.openLink(absoluteUrl, { try_instant_view: false });
+    return;
+  }
+
+  const response = await fetch(absoluteUrl, { cache: "no-store" });
   if (!response.ok) throw new ApiError(response.status, `http:${response.status}`);
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
-  anchor.download = `${title.replace(/[\\/:*?"<>|]+/g, "").trim() || "guide"}.pdf`;
+  anchor.download = fileName;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

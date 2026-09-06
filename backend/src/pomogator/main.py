@@ -22,6 +22,7 @@ redis = Redis.from_url(settings.redis_url, decode_responses=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    app.state.redis = redis
     if settings.app_env == "production" and settings.notion_token:
         Celery(broker=settings.redis_url).send_task("pomogator.sync_all")
     yield
@@ -35,7 +36,12 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.telegram_webapp_url.rstrip("/")],
+    allow_origins=[
+        settings.telegram_webapp_url.rstrip("/"),
+        "https://web.telegram.org",
+        "https://webk.telegram.org",
+        "https://webz.telegram.org",
+    ],
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
