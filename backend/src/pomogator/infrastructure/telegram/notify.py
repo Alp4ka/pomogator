@@ -81,12 +81,12 @@ async def notify_country_sync_result(
         )
         markup = country_ready_keyboard(slug)
     else:
-        detail = (error or "неизвестная ошибка")[:200]
+        detail = (error or "Не удалось обновить материалы. Попробуйте позже.")[:240]
         text = (
             f"⚠️ <b>Не удалось загрузить путеводитель</b>\n\n"
             f"{label}\n"
-            f"<code>{detail}</code>\n\n"
-            "Можно повторить загрузку."
+            f"{detail}\n\n"
+            "Можно повторить загрузку чуть позже."
         )
         markup = country_failed_keyboard(slug)
 

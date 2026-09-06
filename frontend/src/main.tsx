@@ -604,7 +604,9 @@ function App() {
       const started = await requestCountrySync(slug);
       const result = await waitForCountrySync(slug, started.content_version ?? baseline);
       if (result.status === "failed") {
-        setSyncError(result.error || "Не удалось синхронизировать Notion.");
+        setSyncError(
+          "Не удалось обновить материалы. Подождите пару минут и попробуйте снова.",
+        );
         return;
       }
       const { data: nextCountry } = await getCountry(slug);
@@ -621,8 +623,8 @@ function App() {
       if (handleSessionFailure(reason)) return;
       setSyncError(
         reason instanceof ApiError && reason.status === 408
-          ? "Синхронизация занимает слишком много времени. Попробуйте позже."
-          : "Не удалось обновить статью. Попробуйте ещё раз.",
+          ? "Обновление занимает слишком много времени. Попробуйте позже."
+          : "Не удалось обновить материалы. Попробуйте ещё раз.",
       );
     } finally {
       setSyncing(false);

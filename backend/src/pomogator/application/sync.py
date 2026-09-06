@@ -7,6 +7,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from pomogator.config import CountrySource
 from pomogator.domain.links import remap_internal_links
+from pomogator.domain.sync_errors import user_facing_sync_error
 from pomogator.infrastructure.db.models import (
     CountryModel,
     ImageModel,
@@ -134,7 +135,7 @@ class SyncCountry:
                 raise RuntimeError("Sync run disappeared") from exc
             run = failed_run
             run.status = "failed"
-            run.error = str(exc)[:2000]
+            run.error = user_facing_sync_error(exc)[:2000]
             run.finished_at = datetime.now(UTC)
             await self.session.commit()
             raise

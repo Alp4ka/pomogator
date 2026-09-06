@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     notion_countries: list[CountrySource] = Field(default_factory=list)
     admin_telegram_ids: list[int] = Field(default_factory=list)
     sync_interval_minutes: int = 60
+    notion_min_request_interval_seconds: float = 0.35
+    notion_max_retries: int = 8
     init_data_max_age_seconds: int = 3600
     payment_provider: Literal["stub"] = "stub"
     allow_stub_payments_in_production: bool = False

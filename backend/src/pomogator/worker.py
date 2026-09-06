@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from pomogator.application.sync import SyncCountry
 from pomogator.application.sync_waiters import pop_sync_waiters
 from pomogator.config import Settings, get_settings
+from pomogator.domain.sync_errors import user_facing_sync_error
 from pomogator.infrastructure.db.models import CountryModel
 from pomogator.infrastructure.notion.client import NotionClient
 from pomogator.infrastructure.telegram.notify import notify_country_sync_result
@@ -104,7 +105,12 @@ async def _sync_sources(slug: str | None = None) -> None:
     http, _proxy = await _notion_http_client(cfg)
     try:
         async with session_factory() as session:
-            notion = NotionClient(cfg.notion_token, http=http)
+            notion = NotionClient(
+                cfg.notion_token,
+                http=http,
+                min_interval_seconds=cfg.notion_min_request_interval_seconds,
+                max_retries=cfg.notion_max_retries,
+            )
             service = SyncCountry(session, notion)
             for source in cfg.notion_countries:
                 if slug is not None and source.slug != slug:
@@ -121,12 +127,13 @@ async def _sync_sources(slug: str | None = None) -> None:
                         succeeded=True,
                     )
                 except Exception as exc:
+                    log.exception("Notion sync failed for %s", source.slug)
                     await _notify_waiters(
                         source.slug,
                         title=source.slug.title(),
                         flag=source.flag,
                         succeeded=False,
-                        error=str(exc),
+                        error=user_facing_sync_error(exc),
                     )
                     raise
     finally:

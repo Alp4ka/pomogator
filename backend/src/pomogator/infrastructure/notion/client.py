@@ -1,6 +1,9 @@
+import asyncio
 import base64
 import hashlib
+import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
@@ -8,6 +11,9 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from pomogator.domain.content import AccessLevel, parse_access_title
+from pomogator.domain.sync_errors import NotionSyncError
+
+log = logging.getLogger(__name__)
 
 NOTION_API = "https://api.notion.com/v1"
 _PAGE_ID = re.compile(r"([0-9a-f]{32})", re.IGNORECASE)
@@ -49,15 +55,86 @@ class ImportedCountry:
 
 
 class NotionClient:
-    def __init__(self, token: str, http: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        token: str,
+        http: httpx.AsyncClient | None = None,
+        *,
+        min_interval_seconds: float = 0.35,
+        max_retries: int = 8,
+    ):
         self.http = http or httpx.AsyncClient(timeout=30, follow_redirects=True)
         self.headers = {"Authorization": f"Bearer {token}", "Notion-Version": "2022-06-28"}
         self.images: dict[str, ImportedImage] = {}
+        self._min_interval = max(0.05, min_interval_seconds)
+        self._max_retries = max(1, max_retries)
+        self._throttle_lock = asyncio.Lock()
+        self._next_request_at = 0.0
+
+    async def _throttle(self) -> None:
+        async with self._throttle_lock:
+            now = time.monotonic()
+            delay = self._next_request_at - now
+            if delay > 0:
+                await asyncio.sleep(delay)
+            self._next_request_at = time.monotonic() + self._min_interval
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        response = await self.http.get(f"{NOTION_API}{path}", headers=self.headers, params=params)
-        response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+        last_error: BaseException | None = None
+        for attempt in range(self._max_retries):
+            await self._throttle()
+            try:
+                response = await self.http.get(
+                    f"{NOTION_API}{path}", headers=self.headers, params=params
+                )
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                await asyncio.sleep(min(2**attempt, 20))
+                continue
+            except httpx.TransportError as exc:
+                last_error = exc
+                await asyncio.sleep(min(2**attempt, 20))
+                continue
+
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After", "1")
+                try:
+                    wait = float(retry_after)
+                except ValueError:
+                    wait = 1.0
+                wait = min(max(wait, self._min_interval), 60.0)
+                log.warning(
+                    "Notion rate limited on %s (attempt %s/%s), sleeping %.1fs",
+                    path,
+                    attempt + 1,
+                    self._max_retries,
+                    wait,
+                )
+                await asyncio.sleep(wait)
+                last_error = NotionSyncError("rate_limited")
+                continue
+
+            if response.status_code >= 500:
+                last_error = NotionSyncError("unavailable")
+                await asyncio.sleep(min(2**attempt, 20))
+                continue
+
+            if response.status_code >= 400:
+                log.error(
+                    "Notion API error status=%s path=%s body=%s",
+                    response.status_code,
+                    path,
+                    response.text[:500],
+                )
+                if response.status_code == 404:
+                    raise NotionSyncError("failed")
+                raise NotionSyncError("unavailable")
+
+            return cast(dict[str, Any], response.json())
+
+        if isinstance(last_error, NotionSyncError):
+            raise last_error
+        raise NotionSyncError("unavailable") from last_error
 
     async def _all_blocks(self, block_id: str) -> list[dict[str, Any]]:
         results, cursor = [], None
