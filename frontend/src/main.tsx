@@ -85,45 +85,61 @@ function PageOutline({
   onOpenChild: (id: string) => void;
   onOpenPaywall: (title: string, resumeId?: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   if (!sections.length && !childrenPages.length) return null;
+  const count = sections.length + childrenPages.length;
   return (
-    <nav className="page-outline" aria-label="Оглавление">
-      <div className="page-outline-head">
-        <h2>Оглавление</h2>
-        <span className="muted">{sections.length + childrenPages.length}</span>
-      </div>
-      {sections.length > 0 ? (
-        <ol className="page-outline-list">
-          {sections.map((item) => (
-            <li key={item.id} data-level={item.level}>
-              <button
-                type="button"
-                className="page-outline-link"
-                onClick={() => scrollToSection(item.id)}
-              >
-                {item.title}
-              </button>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {childrenPages.length > 0 ? (
-        <ul className="toc-list page-outline-children">
-          {childrenPages.map((child) => (
-            <li key={child.id}>
-              <button
-                type="button"
-                className="toc-item"
-                onClick={() =>
-                  child.locked ? onOpenPaywall(child.title, child.id) : onOpenChild(child.id)
-                }
-              >
-                <span className="toc-title">{child.title}</span>
-                <span className="toc-meta">{child.locked ? "Закрыто" : "Открыть"}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+    <nav className={`page-outline ${open ? "is-open" : "is-collapsed"}`} aria-label="Оглавление">
+      <button
+        type="button"
+        className="page-outline-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="page-outline-toggle-label">
+          <h2>Оглавление</h2>
+          <span className="muted">{count}</span>
+        </span>
+        <span className="page-outline-chevron" aria-hidden>
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open ? (
+        <div className="page-outline-body">
+          {sections.length > 0 ? (
+            <ol className="page-outline-list">
+              {sections.map((item) => (
+                <li key={item.id} data-level={item.level}>
+                  <button
+                    type="button"
+                    className="page-outline-link"
+                    onClick={() => scrollToSection(item.id)}
+                  >
+                    {item.title}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {childrenPages.length > 0 ? (
+            <ul className="toc-list page-outline-children">
+              {childrenPages.map((child) => (
+                <li key={child.id}>
+                  <button
+                    type="button"
+                    className="toc-item"
+                    onClick={() =>
+                      child.locked ? onOpenPaywall(child.title, child.id) : onOpenChild(child.id)
+                    }
+                  >
+                    <span className="toc-title">{child.title}</span>
+                    <span className="toc-meta">{child.locked ? "Закрыто" : "Открыть"}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
     </nav>
   );
@@ -729,6 +745,7 @@ function App() {
       </header>
 
       <PageOutline
+        key={page.id}
         sections={outline}
         childrenPages={page.children}
         onOpenChild={open}

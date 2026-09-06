@@ -343,15 +343,17 @@ button {
   margin: 1.1em 0;
   max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
 }
 .notion-table {
-  width: 100%;
-  min-width: 280px;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
   font-size: 0.95em;
 }
 .notion-table th,
@@ -361,8 +363,9 @@ button {
   border-bottom: 1px solid var(--border);
   vertical-align: top;
   text-align: left;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .notion-table tr > :last-child {
   border-right: 0;
@@ -583,24 +586,52 @@ figcaption {
 /* Table of contents / page outline */
 .page-outline {
   margin: 0 0 24px;
-  padding: 14px 14px 12px;
+  padding: 0;
   max-width: min(42rem, 100%);
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+  overflow: hidden;
 }
-.page-outline-head {
+.page-outline-toggle {
   display: flex;
-  align-items: baseline;
+  width: 100%;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.page-outline-head h2 {
+.page-outline-toggle:active,
+.page-outline-toggle:focus-visible {
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+}
+.page-outline-toggle-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.page-outline-toggle-label h2 {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
+}
+.page-outline-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+.page-outline-body {
+  padding: 0 14px 12px;
 }
 .page-outline-list {
   list-style: none;
