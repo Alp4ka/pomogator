@@ -46,14 +46,19 @@ def _socks_pool(cfg: Settings) -> SocksProxyPool:
 async def _notion_http_client(cfg: Settings) -> tuple[httpx.AsyncClient, str | None]:
     if not cfg.notion_token:
         raise RuntimeError("NOTION_TOKEN is required for sync")
-    pool = _socks_pool(cfg)
     headers = _notion_headers(cfg.notion_token)
-    proxy_url = await resolve_socks_proxy(
-        pool,
-        probe_url=NOTION_PROBE_URL,
-        headers=headers,
-        label="Notion",
-    )
+    proxy_url: str | None = None
+    if cfg.socks_enabled:
+        pool = _socks_pool(cfg)
+        proxy_url = await resolve_socks_proxy(
+            pool,
+            probe_url=NOTION_PROBE_URL,
+            headers=headers,
+            label="Notion",
+            enabled=True,
+        )
+    else:
+        log.info("Notion SOCKS disabled; using direct connection")
     client = httpx.AsyncClient(
         proxy=proxy_url,
         timeout=60.0,

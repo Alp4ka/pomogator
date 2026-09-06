@@ -12,3 +12,4 @@ frontend/dist/
 .DS_Store
 *.log
 Без названия/
+compose.override.yaml

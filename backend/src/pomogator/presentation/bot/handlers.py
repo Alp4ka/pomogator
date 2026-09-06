@@ -9,6 +9,7 @@ from aiogram.types import (
 )
 from celery import Celery
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from pomogator.config import get_settings
 from pomogator.infrastructure.db.base import SessionFactory
@@ -55,10 +56,22 @@ async def start(message: Message) -> None:
                         username=message.from_user.username,
                     )
                 )
+                try:
+                    await session.commit()
+                except IntegrityError:
+                    await session.rollback()
+                    user = await session.scalar(
+                        select(UserModel).where(UserModel.telegram_id == message.from_user.id)
+                    )
+                    if user is None:
+                        raise
+                    user.first_name = message.from_user.first_name
+                    user.username = message.from_user.username
+                    await session.commit()
             else:
                 user.first_name = message.from_user.first_name
                 user.username = message.from_user.username
-            await session.commit()
+                await session.commit()
     await message.answer(
         "<b>Помогатор по переезду</b>\n\n"
         "Выберите страну — покажем инструкции, документы и полезные контакты.",

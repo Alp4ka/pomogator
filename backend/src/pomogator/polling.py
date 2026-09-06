@@ -84,13 +84,19 @@ async def run() -> None:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required for long polling")
 
+    socks_enabled = settings.socks_enabled
     pool = SocksProxyPool(
         settings.telegram_socks_proxy_list_url,
         cache_ttl_seconds=settings.telegram_socks_cache_ttl_seconds,
         probe_timeout=settings.telegram_socks_probe_timeout_seconds,
         max_acquire_attempts=settings.telegram_socks_max_acquire_attempts,
     )
-    proxy_url = await resolve_socks_proxy(pool, probe_url=TELEGRAM_PROBE_URL, label="Telegram")
+    proxy_url = await resolve_socks_proxy(
+        pool,
+        probe_url=TELEGRAM_PROBE_URL,
+        label="Telegram",
+        enabled=socks_enabled,
+    )
 
     while True:
         session = AiohttpSession(proxy=proxy_url) if proxy_url else AiohttpSession()
@@ -110,6 +116,12 @@ async def run() -> None:
         finally:
             await bot.session.close()
 
+        if not socks_enabled:
+            log.warning("Telegram transport failed; retrying direct connection")
+            proxy_url = None
+            await asyncio.sleep(5.0)
+            continue
+
         if proxy_url:
             pool.mark_failed(proxy_url)
         else:
@@ -121,7 +133,10 @@ async def run() -> None:
             proxy_url = None
             await asyncio.sleep(5.0)
             proxy_url = await resolve_socks_proxy(
-                pool, probe_url=TELEGRAM_PROBE_URL, label="Telegram"
+                pool,
+                probe_url=TELEGRAM_PROBE_URL,
+                label="Telegram",
+                enabled=True,
             )
             if proxy_url is None and not await https_reachable(TELEGRAM_PROBE_URL, None):
                 await asyncio.sleep(15.0)

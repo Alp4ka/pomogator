@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     telegram_bot_token: str = ""
     telegram_webapp_url: str = "http://localhost:5173"
+    socks_enabled: bool = False
     telegram_socks_proxy_list_url: str = (
         "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt"
     )

@@ -57,15 +57,14 @@ Caddy нужен для Mini App (публичный HTTPS), не для пол�
 
 ## SOCKS5 transport (Telegram + Notion)
 
-На части VPS `api.telegram.org` и `api.notion.com` недоступны напрямую (часто HTML 403 от Cloudflare).
+По умолчанию **выключено** (`SOCKS_ENABLED=false`) — для зарубежного VPS прямого доступа достаточно.
 
-1. При старте `bot` / sync-задачи проверяется прямой доступ к нужному API.
-2. Если недоступен — скачивается SOCKS5-список из `TELEGRAM_SOCKS_PROXY_LIST_URL` (по умолчанию [hookzof/socks5_list](https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt)).
-3. Выбирается **случайный** рабочий прокси (probe: Telegram `/` или Notion `/v1/users/me`).
-4. Прокси **не** меняется на каждый запрос — только при инициализации и после сетевых сбоев.
-5. HTML-ответы считаются провалом probe (geo-block), JSON/не-HTML — успехом.
-6. Список обновляется запросом к raw-файлу на GitHub; клонировать репозиторий списка не нужно.
-7. MTProto-прокси (`t.me/proxy?...`) **не** подходят — только SOCKS5/HTTP.
+На VPS в РФ, где `api.telegram.org` / `api.notion.com` недоступны (часто HTML 403 от Cloudflare), включите `SOCKS_ENABLED=true`:
+
+1. При старте `bot` / sync проверяется прямой доступ к API.
+2. Если недоступен — скачивается SOCKS5-список из `TELEGRAM_SOCKS_PROXY_LIST_URL`.
+3. Выбирается случайный рабочий прокси; на каждый запрос не меняется — только при init/сбоях.
+4. MTProto (`t.me/proxy?...`) не подходит — только SOCKS5/HTTP.
 
 Код: `infrastructure/telegram/socks_pool.py`; оркестрация в `polling.py` и `worker.py`.
 
@@ -91,11 +90,35 @@ make lint && make test
 
 Не использовать `rsync`, `scp` дерева исходников или ручное копирование файлов приложения. Исключение — одноразовые операции вне репозитория (например, правка серверного `.env`), и то осознанно.
 
+### Production host
+
+| Параметр | Значение |
+|----------|----------|
+| SSH | `root@134.209.253.10` |
+| Каталог приложения | `/root/pomogator` (или `~/pomogator` под root) |
+| Домен Mini App | `ggarpomogator.ru` (DNS A → этот IP) |
+| Auth | предпочтительно SSH-ключ; пароль root — только вне git/чата (см. ниже) |
+
+Старый хост `user1@45.151.30.135` больше не используется.
+
+### Как передавать секреты агенту (не в чат)
+
+Секреты **нельзя** писать в сообщение чата: они попадают в историю диалога / transcript и потом снова доступны модели.
+
+Правильный порядок:
+
+1. **SSH:** настроить ключ (`ssh-copy-id root@134.209.253.10`) или `~/.ssh/config` + `IdentityFile`. Агент ходит по ключу без пароля в промпте.
+2. **`.env`:** держать локально и на сервере в gitignored файлах. Агент читает с диска по необходимости и **не** цитирует значения в ответах.
+3. **Одноразово:** положить секрет в локальный файл вне репо, например `~/.config/pomogator/secrets.env` (права `600`), сказать агенту путь. После использования файл можно удалить.
+4. **Не делать:** пароль/токен в чате, в `AGENTS.md`, в коммитах, в issue/PR.
+
+Идеал: агент вообще не видит root-пароль — только key-based SSH.
+
 ### Репозиторий
 
 - Remote: `origin` → GitHub (`Alp4ka/pomogator`).
 - Рабочая ветка для продакшена: `main` (пока нет release-ветки).
-- На сервере клон: `~/pomogator` у пользователя `user1` (хост по SSH, например `user1@45.151.30.135`).
+- На сервере: клон в `/root/pomogator`, доступ `root@134.209.253.10`.
 
 ### Локально (агент / разработчик)
 
@@ -113,11 +136,11 @@ git push origin HEAD
 ### На сервере
 
 ```bash
-ssh user1@<VPS_IP>
-cd ~/pomogator
+ssh root@134.209.253.10
+cd /root/pomogator
 git fetch origin
 git pull --ff-only origin main
-sudo docker compose up -d --build <сервисы>
+docker compose up -d --build <сервисы>
 ```
 
 Типичные наборы:
@@ -126,15 +149,15 @@ sudo docker compose up -d --build <сервисы>
 - API / auth / routes → `api` (+ при необходимости `worker`)
 - frontend Mini App → `frontend` (и при смене проксирования — `caddy`)
 - миграции схемы → после `pull`:  
-  `sudo docker compose exec api alembic upgrade head`
+  `docker compose exec api alembic upgrade head`
 - полная пересборка при сомнениях →  
-  `sudo docker compose up -d --build`
+  `docker compose up -d --build`
 
 Проверки после деплоя:
 
 ```bash
-sudo docker compose ps
-sudo docker compose logs --tail=80 bot api caddy
+docker compose ps
+docker compose logs --tail=80 bot api caddy
 curl -fsS https://ggarpomogator.ru/health
 curl -fsS https://ggarpomogator.ru/ready
 ```
@@ -143,13 +166,13 @@ curl -fsS https://ggarpomogator.ru/ready
 
 - Обновления на VPS делать **только** через git push + ssh `git pull` (+ `docker compose`), не через rsync/scp кода.
 - Перед push убедиться, что коммит существует и пользователь его запросил (или явно попросил «задеплоить», подразумевая commit+push — тогда уточнить, если коммита ещё нет).
-- Секреты (`.env`, токены) на сервер через git **не** тащить; править `.env` на сервере отдельно.
+- Секреты (`.env`, токены, root-пароль) через git и чат **не** тащить; править `.env` на сервере отдельно; SSH — ключом.
 - Одновременно не держать локальный `bot` и серверный `bot` на одном `TELEGRAM_BOT_TOKEN` — будет `Conflict`.
 - Если SSH не отвечает (banner timeout) — не долбить rsync; сообщить пользователю про reboot VPS / OOM.
 
 ### Первичный bootstrap сервера (редко)
 
-Один раз: Docker, клон репо, `.env` из `.env.example`, DNS на IP VPS, `docker compose up --build -d`, миграции, URL Mini App в BotFather. Дальнейшие обновления — только git pull.
+Один раз: Docker, клон репо в `/root/pomogator`, `.env` из `.env.example`, DNS `ggarpomogator.ru` → `134.209.253.10`, `docker compose up --build -d`, миграции, URL Mini App в BotFather. Дальнейшие обновления — только git pull.
 
 ## Конфигурация
 

@@ -47,19 +47,23 @@ async def https_reachable(
     timeout_seconds: float = 10.0,
     headers: dict[str, str] | None = None,
 ) -> bool:
-    """Return True when ``url`` responds with a non-HTML body through optional SOCKS5."""
+    """Return True when ``url`` is reachable through optional SOCKS5.
+
+    Does not follow redirects: ``api.telegram.org`` answers with 302 to an HTML
+    docs page, which is still a successful Telegram reachability signal. HTML
+    bodies on 403/503 are treated as geo/Cloudflare blocks.
+    """
     try:
         async with httpx.AsyncClient(
             proxy=proxy_url,
             timeout=timeout_seconds,
-            follow_redirects=True,
+            follow_redirects=False,
         ) as client:
             response = await client.get(url, headers=headers)
             content_type = response.headers.get("content-type", "").lower()
-            # Cloudflare/geo blocks often return HTML 403/503 instead of the real API.
-            if "text/html" in content_type:
+            if response.status_code in {403, 503} and "text/html" in content_type:
                 return False
-            return True
+            return response.status_code < 500
     except Exception as exc:  # noqa: BLE001 — probe must never raise
         log.debug("HTTPS probe failed via %s for %s: %s", proxy_url or "direct", url, exc)
         return False
@@ -175,8 +179,12 @@ async def resolve_socks_proxy(
     probe_url: str,
     headers: dict[str, str] | None = None,
     label: str,
+    enabled: bool = True,
 ) -> str | None:
-    """Return None when direct access works, otherwise a working SOCKS5 URL."""
+    """Return None when direct access works or SOCKS is disabled."""
+    if not enabled:
+        log.info("%s SOCKS disabled; using direct connection", label)
+        return None
     if await https_reachable(
         probe_url,
         None,
