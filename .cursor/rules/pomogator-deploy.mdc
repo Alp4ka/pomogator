@@ -1,0 +1,17 @@
+---
+description: Always follow Pomogator production delivery skill for deploy, redeploy, and secrets.
+alwaysApply: true
+---
+
+# Pomogator deploy — always follow
+
+For any production ship, redeploy, server update, or secrets/`.env` delivery:
+
+1. Read `.cursor/skills/pomogator-deploy/SKILL.md`
+2. Follow the matching separate instruction:
+   - code from local → `01-deliver-code.md`
+   - update on server → `02-update-server.md`
+   - redeploy → `03-redeploy.md`
+   - secrets → `04-deliver-secrets.md`
+
+Do not use rsync/scp for application source. Do not put secrets in chat or commits.
