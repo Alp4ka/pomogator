@@ -2,21 +2,17 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
-from celery import Celery
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pomogator.config import get_settings
+from pomogator.application.payments import PurchaseError, purchase_country_access
 from pomogator.domain.content import AccessLevel
-from pomogator.domain.payments import PaymentProvider, StubPaymentProvider
 from pomogator.infrastructure.db.base import session_dependency
 from pomogator.infrastructure.db.models import (
-    EntitlementModel,
     ImageModel,
     PageImageModel,
     PageModel,
-    PaymentModel,
     UserModel,
 )
 from pomogator.infrastructure.db.repositories import ContentRepository
@@ -108,33 +104,12 @@ async def purchase(slug: str, ctx: Context, request: Request) -> dict[str, str]:
         raise HTTPException(404, "Country not found")
     supplied_key = request.headers.get("Idempotency-Key")
     key = supplied_key or f"stub:{user.id}:{country.id}"
-    payment = await session.scalar(select(PaymentModel).where(PaymentModel.idempotency_key == key))
-    provider: PaymentProvider = StubPaymentProvider()
-    result = await provider.purchase(user.id, country.id, key)
-    if payment is None:
-        session.add(
-            PaymentModel(
-                idempotency_key=key,
-                external_id=result.external_id,
-                user_id=user.id,
-                country_id=country.id,
-                status="succeeded" if result.succeeded else "failed",
-            )
+    try:
+        return await purchase_country_access(
+            session, user=user, country=country, idempotency_key=key
         )
-    if not result.succeeded:
-        raise HTTPException(502, "Payment was not completed")
-    Celery(broker=get_settings().redis_url).send_task("pomogator.sync_country", args=[country.slug])
-    entitlement = await session.scalar(
-        select(EntitlementModel).where(
-            EntitlementModel.user_id == user.id, EntitlementModel.country_id == country.id
-        )
-    )
-    if entitlement is None:
-        session.add(EntitlementModel(user_id=user.id, country_id=country.id, active=True))
-    else:
-        entitlement.active = True
-    await session.commit()
-    return {"status": "succeeded", "provider": "stub"}
+    except PurchaseError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @router.get("/images/{digest}")

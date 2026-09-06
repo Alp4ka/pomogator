@@ -1,14 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { DocumentBody } from "./document";
+import { applyTheme, bindThemeListeners } from "./theme";
 import "./style.css";
 
-type Link = { type: "external"; url: string } | { type: "internal"; page_id: string };
-type Rich = { text: string; annotations?: Record<string, boolean>; link?: Link };
-type Block = { type: string; rich_text?: Rich[]; image_id?: string; caption?: string; checked?: boolean; language?: string; icon?: string };
 type Child = { id: string; title: string; locked: boolean };
-type Page = { id: string; title: string; document: Block[]; children: Child[] };
-type Country = { title: string; flag: string; root_page_id: string | null; paid: boolean };
+type Page = { id: string; title: string; document: import("./document").Block[]; children: Child[] };
+type Country = { title: string; flag: string; root_page_id: string | null; paid: boolean; slug?: string };
 type HistoryItem = { id: string; title: string };
+
+applyTheme();
 
 const tg = window.Telegram?.WebApp;
 const headers = (): HeadersInit => ({ Authorization: `tma ${tg?.initData ?? ""}` });
@@ -20,33 +21,76 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function RichText({ items = [], onInternal }: { items?: Rich[]; onInternal: (id: string) => void }) {
-  return <>{items.map((item, index) => {
-    let node: React.ReactNode = item.text;
-    if (item.annotations?.code) node = <code>{node}</code>;
-    if (item.annotations?.bold) node = <strong>{node}</strong>;
-    if (item.annotations?.italic) node = <em>{node}</em>;
-    if (item.annotations?.strikethrough) node = <s>{node}</s>;
-    if (item.annotations?.underline) node = <u>{node}</u>;
-    if (item.link?.type === "external") node = <a href={item.link.url} target="_blank" rel="noopener noreferrer">{node}</a>;
-    if (item.link?.type === "internal") { const pageId = item.link.page_id; node = <button className="text-link" onClick={() => onInternal(pageId)}>{node}</button>; }
-    return <React.Fragment key={index}>{node}</React.Fragment>;
-  })}</>;
+function SiteNav({
+  onBack,
+  onHome,
+  backLabel,
+}: {
+  onBack: () => void;
+  onHome: () => void;
+  backLabel: string;
+}) {
+  return (
+    <nav className="site-nav" aria-label="Навигация">
+      <button type="button" className="nav-btn" onClick={onBack} aria-label={backLabel}>
+        ← Назад
+      </button>
+      <button type="button" className="nav-btn" onClick={onHome} aria-label="На главную">
+        На главную
+      </button>
+    </nav>
+  );
 }
 
-function Paywall({ title, onBuy, onBack, busy }: { title: string; onBuy: () => void; onBack: () => void; busy: boolean }) {
-  return <main className="paywall" aria-live="polite">
-    <button className="back-link" onClick={onBack}>← Вернуться к путеводителю</button>
-    <section className="paywall-card">
-      <div className="premium-mark">✦ Полный доступ</div>
-      <h1>{title}</h1>
-      <p className="lead">Эта статья входит в полный путеводитель по стране.</p>
-      <div className="preview"><span>Внутри</span><ul><li>Проверенные контакты и практические рекомендации</li><li>Материалы без рекламных переходов в Notion</li><li>Все будущие обновления выбранной страны</li></ul></div>
-      <div className="offer"><div><small>Тестовый режим оплаты</small><strong>0 ₽</strong></div><span><b>Все материалы по Бразилии</b><small>включая будущие обновления</small></span></div>
-      <button className="primary" disabled={busy} onClick={onBuy}>{busy ? "Открываем доступ…" : "Открыть полный путеводитель"}</button>
-      <p className="fineprint">Сейчас используется тестовая оплата: деньги не списываются. Перед запуском она будет заменена платёжной системой.</p>
-    </section>
-  </main>;
+function Paywall({
+  title,
+  countryTitle,
+  onBuy,
+  onBack,
+  onHome,
+  busy,
+  error,
+}: {
+  title: string;
+  countryTitle: string;
+  onBuy: () => void;
+  onBack: () => void;
+  onHome: () => void;
+  busy: boolean;
+  error?: string;
+}) {
+  return (
+    <main className="shell" aria-live="polite">
+      <SiteNav onBack={onBack} onHome={onHome} backLabel="Назад" />
+      <section className="paywall">
+        <p className="kicker">Полный доступ</p>
+        <h1>{title}</h1>
+        <p className="lede">
+          Все закрытые этапы и обновления по стране <strong>{countryTitle}</strong>.
+        </p>
+        <ul className="plain-list">
+          <li>Закрытые этапы и чек-листы</li>
+          <li>Контакты без рекламных переходов</li>
+          <li>Будущие обновления этой страны</li>
+        </ul>
+        <div className="price-row">
+          <div>
+            <span className="muted">Тестовая оплата</span>
+            <strong className="price">0 ₽</strong>
+          </div>
+          <button type="button" className="btn" disabled={busy} onClick={onBuy}>
+            {busy ? "Открываем…" : "Оплатить полный доступ"}
+          </button>
+        </div>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <p className="fineprint">Деньги не списываются. Позже подключим боевую оплату.</p>
+      </section>
+    </main>
+  );
 }
 
 function App() {
@@ -58,64 +102,280 @@ function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState(false);
-  const [locked, setLocked] = useState<Child>();
+  const [buyError, setBuyError] = useState("");
+  const [paywall, setPaywall] = useState<{ title: string; resumeId?: string }>();
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
-  const loadPage = useCallback(async (id: string) => {
-    setLoading(true); setError("");
+  const loadPage = useCallback(async (id: string, options?: { history?: "push" | "none" | "reset" }) => {
+    const historyMode = options?.history ?? "push";
+    setLoading(true);
+    setError("");
     try {
       const next = await api<Page>(`/api/pages/${id}`);
-      setPage(next); setPageId(id); setLocked(undefined);
-      setHistory((items) => items.at(-1)?.id === next.id ? items : [...items, { id: next.id, title: next.title }]);
-    } catch (reason) { setError(reason instanceof Error && reason.message === "paid" ? "Для статьи нужен полный доступ" : "Не удалось загрузить статью"); }
-    finally { setLoading(false); }
+      setPage(next);
+      setPageId(id);
+      setPaywall(undefined);
+      setBuyError("");
+      if (historyMode === "reset") setHistory([{ id: next.id, title: next.title }]);
+      else if (historyMode === "push") {
+        setHistory((items) =>
+          items.at(-1)?.id === next.id ? items : [...items, { id: next.id, title: next.title }],
+        );
+      }
+    } catch (reason) {
+      if (reason instanceof Error && reason.message === "paid") {
+        setPaywall({ title: "Материал полного доступа", resumeId: id });
+        return;
+      }
+      setError("Не удалось загрузить статью");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const bootstrapCountry = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const value = await api<Country>(`/api/countries/${slug}`);
+      setCountry(value);
+      if (value.root_page_id) await loadPage(value.root_page_id, { history: "reset" });
+      else setError("Материалы ещё индексируются");
+    } catch {
+      setError("Не удалось открыть страну");
+    } finally {
+      setLoading(false);
+    }
+  }, [loadPage, slug]);
+
+  const goHome = useCallback(() => {
+    const rootId = country?.root_page_id;
+    if (!rootId) return;
+    tg?.HapticFeedback.impactOccurred("light");
+    setPaywall(undefined);
+    setBuyError("");
+    void loadPage(rootId, { history: "reset" });
+  }, [country?.root_page_id, loadPage]);
+
+  const goBack = useCallback(() => {
+    if (paywall) {
+      setPaywall(undefined);
+      setBuyError("");
+      return;
+    }
+    if (history.length <= 1) {
+      tg?.close?.();
+      return;
+    }
+    const previous = history.at(-2)!;
+    setHistory((items) => items.slice(0, -1));
+    void loadPage(previous.id, { history: "none" });
+  }, [history, loadPage, paywall]);
+
+  useEffect(() => {
+    tg?.ready();
+    tg?.expand();
+    return bindThemeListeners();
   }, []);
 
   useEffect(() => {
-    tg?.ready(); tg?.expand();
-    api<Country>(`/api/countries/${slug}`).then((value) => { setCountry(value); if (value.root_page_id) void loadPage(value.root_page_id); else setError("Материалы ещё индексируются"); }).catch(() => setError("Не удалось открыть страну")).finally(() => setLoading(false));
-  }, [loadPage, slug]);
+    void bootstrapCountry();
+  }, [bootstrapCountry]);
 
   useEffect(() => {
-    const ids = page?.document.flatMap((block) => block.image_id ? [block.image_id] : []) ?? [];
-    const createdUrls: string[] = []; let active = true;
-    Promise.all(ids.map(async (id) => { const response = await fetch(`/api/images/${id}`, { headers: headers() }); if (!response.ok) throw new Error(); const objectUrl = URL.createObjectURL(await response.blob()); createdUrls.push(objectUrl); return [id, objectUrl] as const; }))
-      .then((entries) => { if (active) setImageUrls(Object.fromEntries(entries)); }).catch(() => undefined);
-    return () => { active = false; createdUrls.forEach(URL.revokeObjectURL); };
+    const ids = page?.document.flatMap((block) => (block.image_id ? [block.image_id] : [])) ?? [];
+    const createdUrls: string[] = [];
+    let active = true;
+    Promise.all(
+      ids.map(async (id) => {
+        const response = await fetch(`/api/images/${id}`, { headers: headers() });
+        if (!response.ok) throw new Error();
+        const objectUrl = URL.createObjectURL(await response.blob());
+        createdUrls.push(objectUrl);
+        return [id, objectUrl] as const;
+      }),
+    )
+      .then((entries) => {
+        if (active) setImageUrls(Object.fromEntries(entries));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      createdUrls.forEach(URL.revokeObjectURL);
+    };
   }, [page]);
 
-  const goBack = useCallback(() => { if (history.length > 1) { const next = history.at(-2)!; setHistory((items) => items.slice(0, -1)); setPageId(next.id); } }, [history]);
-  useEffect(() => { if (history.length > 1) tg?.BackButton.show(); else tg?.BackButton.hide(); tg?.BackButton.onClick(goBack); return () => tg?.BackButton.offClick(goBack); }, [goBack, history.length]);
+  useEffect(() => {
+    tg?.BackButton.show();
+    tg?.BackButton.onClick(goBack);
+    return () => tg?.BackButton.offClick(goBack);
+  }, [goBack]);
 
   async function buy() {
-    if (!locked) return; setBuying(true);
-    try { await api(`/api/countries/${slug}/purchase`, { method: "POST" }); setCountry((value) => value ? { ...value, paid: true } : value); await loadPage(locked.id); }
-    catch { setError("Не удалось выдать тестовый доступ. Попробуйте ещё раз."); }
-    finally { setBuying(false); }
+    setBuying(true);
+    setBuyError("");
+    try {
+      await api(`/api/countries/${slug}/purchase`, { method: "POST" });
+      setCountry((value) => (value ? { ...value, paid: true } : value));
+      const resume = paywall?.resumeId ?? pageId;
+      setPaywall(undefined);
+      if (resume) await loadPage(resume, { history: "none" });
+    } catch {
+      setBuyError("Не удалось выдать тестовый доступ. Попробуйте ещё раз.");
+    } finally {
+      setBuying(false);
+    }
   }
 
-  if (locked) return <Paywall title={locked.title} onBuy={() => void buy()} onBack={() => setLocked(undefined)} busy={buying} />;
-  if (loading && !page) return <main className="loading" role="status"><div className="spinner" />Загружаем путеводитель…</main>;
-  if (error) return <main className="state" role="alert"><div className="state-icon">!</div><h1>Что-то пошло не так</h1><p>{error}</p><button className="primary" onClick={() => pageId && void loadPage(pageId)}>Повторить</button></main>;
-  if (!page) return <main className="state"><h1>Материалы не найдены</h1></main>;
-  const open = (id: string) => { tg?.HapticFeedback.impactOccurred("light"); void loadPage(id); };
-  const rich = (block: Block) => <RichText items={block.rich_text} onInternal={open} />;
-  const isRoot = history.length <= 1;
+  const open = (id: string) => {
+    tg?.HapticFeedback.impactOccurred("light");
+    void loadPage(id);
+  };
 
-  return <main className="app-shell">
-    {isRoot ? <header className="hero"><div className="hero-top"><div className="flag">{country?.flag ?? "🌍"}</div><span className={country?.paid ? "access paid" : "access free"}>{country?.paid ? "Полный доступ" : "Базовый доступ"}</span></div><p className="eyebrow">Путеводитель по переезду</p><h1>{page.title}</h1><p className="hero-copy">Спокойный маршрут от подготовки документов до первых недель в новой стране.</p><div className="trust-row"><span>✓ Проверено редакцией</span><span>↻ Обновляем материалы</span></div></header> : <header className="article-header"><button className="back-link" onClick={goBack}>← {history.at(-2)?.title ?? "Путеводитель"}</button><p className="eyebrow">{country?.flag} {country?.title}</p><h1>{page.title}</h1><div className="article-meta"><span>Материал путеводителя</span><span>•</span><span>Доступ проверен</span></div></header>}
-    <article className="article-body">{page.document.map((block, index) => {
-      if (block.type === "image") return <figure key={index}><div className="image-frame">{imageUrls[block.image_id ?? ""] ? <img src={imageUrls[block.image_id ?? ""]} alt={block.caption || "Иллюстрация к материалу"} /> : <div className="image-placeholder">{country?.flag}</div>}</div>{block.caption && <figcaption>{block.caption}</figcaption>}</figure>;
-      if (block.type === "divider") return <hr key={index} />;
-      if (block.type === "to_do") return <div className="requirement" key={index}><span className={block.checked ? "check done" : "check"}>{block.checked ? "✓" : "•"}</span><span>{rich(block)}</span></div>;
-      if (block.type === "code") return <pre key={index}><code>{block.rich_text?.map((item) => item.text).join("")}</code></pre>;
-      if (block.type === "callout") return <aside key={index}><span>{block.icon}</span><div>{rich(block)}</div></aside>;
-      const tag = block.type.startsWith("heading_") ? `h${block.type.at(-1)}` : block.type.includes("list_item") ? "li" : block.type === "quote" ? "blockquote" : "p";
-      return React.createElement(tag, { key: index }, rich(block));
-    })}</article>
-    {page.children.length > 0 && <section className="guide-section"><div className="section-heading"><div><p className="eyebrow">Следующие шаги</p><h2>Материалы путеводителя</h2></div><span>{page.children.length}</span></div><nav>{page.children.map((child, index) => <button className="article-card" key={child.id} onClick={() => child.locked ? setLocked(child) : open(child.id)}><span className="card-icon">{child.locked ? "◆" : index + 1}</span><span className="card-copy"><strong>{child.title}</strong><small>{child.locked ? "Контакты · полный доступ" : `Инструкция · ${Math.max(3, child.title.length % 8)} мин`}</small></span><span className={child.locked ? "badge locked" : "badge open"}>{child.locked ? "Закрыто" : "Читать"}</span><span className="chevron">›</span></button>)}</nav></section>}
-    <footer><strong>Помогатор</strong><span>Материалы для уверенного переезда</span></footer>
-  </main>;
+  const openPaywall = (title: string, resumeId?: string) => {
+    tg?.HapticFeedback.impactOccurred("medium");
+    setBuyError("");
+    setPaywall({ title, resumeId });
+  };
+
+  const nav = (
+    <SiteNav
+      onBack={goBack}
+      onHome={goHome}
+      backLabel={history.length > 1 || paywall ? "Назад" : "Закрыть"}
+    />
+  );
+
+  if (paywall) {
+    return (
+      <Paywall
+        title={paywall.title}
+        countryTitle={country?.title ?? "страна"}
+        onBuy={() => void buy()}
+        onBack={goBack}
+        onHome={goHome}
+        busy={buying}
+        error={buyError}
+      />
+    );
+  }
+  if (loading && !page) {
+    return (
+      <main className="shell state">
+        {nav}
+        <p className="muted">Загружаем путеводитель…</p>
+      </main>
+    );
+  }
+  if (error) {
+    return (
+      <main className="shell state" role="alert">
+        {nav}
+        <h1>Не удалось открыть</h1>
+        <p className="muted">{error}</p>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void (pageId ? loadPage(pageId) : bootstrapCountry())}
+        >
+          Повторить
+        </button>
+      </main>
+    );
+  }
+  if (!page) {
+    return (
+      <main className="shell state">
+        {nav}
+        <h1>Материалы не найдены</h1>
+      </main>
+    );
+  }
+
+  const isRoot = history.length <= 1;
+  const lockedCount = page.children.filter((child) => child.locked).length;
+
+  return (
+    <main className="shell">
+      {nav}
+      <header className="page-header">
+        <p className="breadcrumb">
+          <span>
+            {country?.flag} {country?.title ?? "Страна"}
+          </span>
+          {!isRoot && history.length > 1 ? (
+            <>
+              <span className="sep">/</span>
+              <span>{history.at(-2)?.title}</span>
+            </>
+          ) : null}
+        </p>
+        <div className="title-row">
+          <h1>{page.title}</h1>
+          <span className={`access ${country?.paid ? "is-paid" : "is-free"}`}>
+            {country?.paid ? "Полный доступ" : "Базовый доступ"}
+          </span>
+        </div>
+        {!country?.paid && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() =>
+              openPaywall(`Полный доступ: ${country?.title ?? page.title}`, page.id)
+            }
+          >
+            Оплатить полный доступ
+          </button>
+        )}
+      </header>
+
+      <DocumentBody
+        blocks={page.document}
+        imageUrls={imageUrls}
+        flag={country?.flag}
+        onInternal={open}
+      />
+
+      {page.children.length > 0 && (
+        <section className="toc">
+          <div className="toc-head">
+            <h2>Содержание</h2>
+            <span className="muted">{page.children.length}</span>
+          </div>
+          {!country?.paid && lockedCount > 0 && (
+            <button
+              type="button"
+              className="btn btn-secondary toc-pay"
+              onClick={() =>
+                openPaywall(
+                  `Полный доступ · ${country?.title ?? "страна"}`,
+                  page.children.find((child) => child.locked)?.id,
+                )
+              }
+            >
+              Открыть {lockedCount} закрытых материалов
+            </button>
+          )}
+          <ul className="toc-list">
+            {page.children.map((child) => (
+              <li key={child.id}>
+                <button
+                  type="button"
+                  className="toc-item"
+                  onClick={() =>
+                    child.locked ? openPaywall(child.title, child.id) : open(child.id)
+                  }
+                >
+                  <span className="toc-title">{child.title}</span>
+                  <span className="toc-meta">{child.locked ? "Закрыто" : "Открыть"}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </main>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -16,7 +16,7 @@ from pomogator.infrastructure.telegram.socks_pool import (
     https_reachable,
     resolve_socks_proxy,
 )
-from pomogator.presentation.bot.handlers import dispatcher
+from pomogator.presentation.bot.handlers import BOT_COMMANDS, dispatcher
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ async def _run_polling(bot: Bot, proxy_url: str | None) -> None:
     stopper = asyncio.create_task(_stop_on_health_failure(), name="telegram-stopper")
     try:
         await bot.delete_webhook(drop_pending_updates=False)
+        await bot.set_my_commands(BOT_COMMANDS)
         me = await bot.get_me()
         log.info(
             "Long polling started for @%s via %s",

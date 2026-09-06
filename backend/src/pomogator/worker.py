@@ -3,11 +3,15 @@ import logging
 
 import httpx
 from celery import Celery
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from pomogator.application.sync import SyncCountry
+from pomogator.application.sync_waiters import pop_sync_waiters
 from pomogator.config import Settings, get_settings
+from pomogator.infrastructure.db.models import CountryModel
 from pomogator.infrastructure.notion.client import NotionClient
+from pomogator.infrastructure.telegram.notify import notify_country_sync_result
 from pomogator.infrastructure.telegram.socks_pool import (
     NOTION_PROBE_URL,
     SocksProxyPool,
@@ -68,6 +72,30 @@ async def _notion_http_client(cfg: Settings) -> tuple[httpx.AsyncClient, str | N
     return client, proxy_url
 
 
+async def _notify_waiters(
+    slug: str,
+    *,
+    title: str,
+    flag: str,
+    succeeded: bool,
+    error: str | None = None,
+) -> None:
+    waiters = pop_sync_waiters(slug)
+    if not waiters:
+        return
+    try:
+        await notify_country_sync_result(
+            waiters,
+            slug=slug,
+            title=title,
+            flag=flag,
+            succeeded=succeeded,
+            error=error,
+        )
+    except Exception:
+        log.exception("Failed to notify sync waiters for %s", slug)
+
+
 async def _sync_sources(slug: str | None = None) -> None:
     cfg = get_settings()
     # Create engine inside the Celery task loop to avoid cross-loop asyncpg errors.
@@ -79,8 +107,28 @@ async def _sync_sources(slug: str | None = None) -> None:
             notion = NotionClient(cfg.notion_token, http=http)
             service = SyncCountry(session, notion)
             for source in cfg.notion_countries:
-                if slug is None or source.slug == slug:
+                if slug is not None and source.slug != slug:
+                    continue
+                try:
                     await service(source)
+                    country = await session.scalar(
+                        select(CountryModel).where(CountryModel.slug == source.slug)
+                    )
+                    await _notify_waiters(
+                        source.slug,
+                        title=(country.title if country else source.slug.title()),
+                        flag=(country.flag if country else source.flag),
+                        succeeded=True,
+                    )
+                except Exception as exc:
+                    await _notify_waiters(
+                        source.slug,
+                        title=source.slug.title(),
+                        flag=source.flag,
+                        succeeded=False,
+                        error=str(exc),
+                    )
+                    raise
     finally:
         await http.aclose()
         await engine.dispose()
