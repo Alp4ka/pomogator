@@ -27,5 +27,5 @@ interface TelegramWebApp {
 }
 
 interface Window {
-  Telegram: { WebApp: TelegramWebApp };
+  Telegram?: { WebApp: TelegramWebApp };
 }

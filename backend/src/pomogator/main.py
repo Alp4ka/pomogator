@@ -36,7 +36,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.telegram_webapp_url.rstrip("/")],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 app.include_router(router)
@@ -63,6 +63,9 @@ async def operational_middleware(request: Request, call_next: RequestResponseEnd
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
+    if request.url.path.startswith("/api/"):
+        # Authenticated Mini App payloads must not linger in shared browser caches.
+        response.headers["Cache-Control"] = "private, no-store"
     return response
 
 

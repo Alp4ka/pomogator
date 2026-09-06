@@ -101,3 +101,23 @@ class SyncRunModel(IdMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PdfExportModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "pdf_exports"
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    page_id: Mapped[UUID] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"), index=True)
+    country_id: Mapped[UUID] = mapped_column(ForeignKey("countries.id", ondelete="CASCADE"))
+    entitled: Mapped[bool] = mapped_column(Boolean, default=False)
+    seal: Mapped[str] = mapped_column(Text, unique=True)
+
+
+class FieldStateModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "field_states"
+    __table_args__ = (UniqueConstraint("user_id", "page_id", "field_key"),)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    page_id: Mapped[UUID] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"), index=True)
+    field_key: Mapped[str] = mapped_column(String(64))
+    field_kind: Mapped[str] = mapped_column(String(32))
+    value: Mapped[str] = mapped_column(Text)

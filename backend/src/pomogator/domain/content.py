@@ -10,16 +10,16 @@ class AccessLevel(StrEnum):
     PAID = "paid"
 
 
-_TAG = re.compile(r"(?:^|\s)\[(Бесплатно|Платным)\](?=\s|$)", re.IGNORECASE)
+_ACCESS_TAG = re.compile(r"\{pmg\.access\.(pay|free)\}", re.IGNORECASE)
 
 
 def parse_access_title(
     title: str, inherited: AccessLevel = AccessLevel.FREE
 ) -> tuple[str, AccessLevel]:
     level = inherited
-    for match in _TAG.finditer(title):
-        level = AccessLevel.FREE if match.group(1).lower() == "бесплатно" else AccessLevel.PAID
-    clean = _TAG.sub(" ", title)
+    for match in _ACCESS_TAG.finditer(title):
+        level = AccessLevel.PAID if match.group(1).lower() == "pay" else AccessLevel.FREE
+    clean = _ACCESS_TAG.sub(" ", title)
     return " ".join(clean.split()), level
 
 

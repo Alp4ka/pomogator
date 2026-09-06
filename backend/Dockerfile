@@ -7,6 +7,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /uvx /bin/
 COPY pyproject.toml uv.lock alembic.ini ./
 COPY backend ./backend

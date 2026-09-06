@@ -22,6 +22,6 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; img-src 'self' blob: data: https://i.ytimg.com https://img.youtube.com; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; child-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'"
 	}
 }

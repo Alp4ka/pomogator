@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupBlocks, type Block } from "./document";
+import { buildOutline, groupBlocks, withHeadingAnchors, type Block } from "./document";
 
 describe("content routing", () => {
   it("keeps external and internal links distinct", () => {
@@ -25,5 +25,45 @@ describe("groupBlocks", () => {
     expect(groups[1]).toMatchObject({ kind: "list", listType: "numbered_list_item" });
     if (groups[1]?.kind === "list") expect(groups[1].items).toHaveLength(2);
     expect(groups[3]).toMatchObject({ kind: "list", listType: "bulleted_list_item" });
+  });
+});
+
+describe("page outline", () => {
+  it("builds interactive heading anchors", () => {
+    const blocks = withHeadingAnchors([
+      { type: "paragraph", rich_text: [{ text: "intro" }] },
+      { type: "heading_2", rich_text: [{ text: "Первый" }] },
+      { type: "heading_3", rich_text: [{ text: "Вложенный" }] },
+      { type: "heading_2", rich_text: [{ text: "  " }] },
+    ]);
+    expect(buildOutline(blocks)).toEqual([
+      { id: "section-1", level: 2, title: "Первый" },
+      { id: "section-2", level: 3, title: "Вложенный" },
+    ]);
+    expect(blocks[1]?.anchor_id).toBe("section-1");
+    expect(blocks[2]?.anchor_id).toBe("section-2");
+  });
+});
+
+describe("list grouping without checklist special-case", () => {
+  it("keeps box-prefixed bullets as ordinary list items", () => {
+    const blocks: Block[] = [
+      { type: "paragraph", rich_text: [{ text: "Сделайте это" }] },
+      {
+        type: "bulleted_list_item",
+        rich_text: [{ text: "▢ Первый" }],
+      },
+      {
+        type: "bulleted_list_item",
+        rich_text: [{ text: "▢ Второй" }],
+      },
+      { type: "paragraph", rich_text: [{ text: "Дальше" }] },
+    ];
+    const groups = groupBlocks(blocks);
+    expect(groups).toHaveLength(3);
+    expect(groups[0]).toMatchObject({ kind: "block" });
+    expect(groups[1]).toMatchObject({ kind: "list", listType: "bulleted_list_item" });
+    if (groups[1]?.kind === "list") expect(groups[1].items).toHaveLength(2);
+    expect(groups[2]).toMatchObject({ kind: "block" });
   });
 });

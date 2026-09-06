@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     payment_provider: Literal["stub"] = "stub"
     allow_stub_payments_in_production: bool = False
     telegram_clock_skew_seconds: int = 30
+    pdf_trace_secret: str = ""
 
     @model_validator(mode="after")
     def validate_runtime(self) -> "Settings":

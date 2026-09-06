@@ -3,7 +3,7 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Any, cast
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -11,6 +11,16 @@ from pomogator.domain.content import AccessLevel, parse_access_title
 
 NOTION_API = "https://api.notion.com/v1"
 _PAGE_ID = re.compile(r"([0-9a-f]{32})", re.IGNORECASE)
+_YOUTUBE_HOSTS = {
+    "youtu.be",
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com",
+}
+_YOUTUBE_ID = re.compile(r"^[\w-]{11}$")
 
 
 @dataclass(slots=True)
@@ -97,6 +107,68 @@ class NotionClient:
             return url
         return None
 
+    @staticmethod
+    def youtube_video_id(url: str) -> str | None:
+        parsed = urlparse(url.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        host = parsed.hostname.lower()
+        if host not in _YOUTUBE_HOSTS:
+            return None
+        if host == "youtu.be":
+            candidate = parsed.path.strip("/").split("/", 1)[0]
+            return candidate if _YOUTUBE_ID.match(candidate) else None
+        query_id = (parse_qs(parsed.query).get("v") or [""])[0]
+        if _YOUTUBE_ID.match(query_id):
+            return query_id
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[0] in {"embed", "shorts", "live", "v"}:
+            candidate = parts[1]
+            return candidate if _YOUTUBE_ID.match(candidate) else None
+        return None
+
+    def _youtube_block(self, url: str, caption: str = "") -> dict[str, Any] | None:
+        safe = self.safe_external_url(url)
+        if not safe:
+            return None
+        video_id = self.youtube_video_id(safe)
+        if not video_id:
+            return None
+        item: dict[str, Any] = {"type": "youtube", "video_id": video_id, "url": safe}
+        if caption:
+            item["caption"] = caption
+        return item
+
+    def _media_url_block(self, block: dict[str, Any]) -> dict[str, Any] | None:
+        kind = block["type"]
+        value = block.get(kind, {})
+        if kind == "video":
+            source = value.get(value.get("type"), {}) if value.get("type") else {}
+            url = source.get("url", "")
+            caption = self._plain(value.get("caption", []))
+            return self._youtube_block(url, caption)
+        if kind == "embed":
+            return self._youtube_block(value.get("url", ""))
+        if kind == "bookmark":
+            caption = self._plain(value.get("caption", []))
+            return self._youtube_block(value.get("url", ""), caption)
+        return None
+
+    async def _table(self, block: dict[str, Any]) -> dict[str, Any]:
+        value = block.get("table", {})
+        rows: list[list[list[dict[str, Any]]]] = []
+        for child in await self._all_blocks(block["id"]):
+            if child.get("type") != "table_row":
+                continue
+            cells = child.get("table_row", {}).get("cells", [])
+            rows.append([await self._rich(cell) for cell in cells])
+        return {
+            "type": "table",
+            "has_column_header": bool(value.get("has_column_header")),
+            "has_row_header": bool(value.get("has_row_header")),
+            "rows": rows,
+        }
+
     async def _rich(self, rich: list[dict[str, Any]]) -> list[dict[str, Any]]:
         output = []
         for part in rich:
@@ -162,6 +234,14 @@ class NotionClient:
             value = block.get(kind, {})
             if kind == "image":
                 document.append(await self._image(block))
+            elif kind == "table":
+                document.append(await self._table(block))
+            elif kind == "table_row":
+                continue
+            elif kind in {"video", "embed", "bookmark"}:
+                media = self._media_url_block(block)
+                if media:
+                    document.append(media)
             else:
                 rich = value.get("rich_text", [])
                 if rich or kind in {"divider", "to_do", "code", "callout"}:
@@ -175,7 +255,7 @@ class NotionClient:
                     if kind == "callout":
                         item["icon"] = (value.get("icon") or {}).get("emoji")
                     document.append(item)
-            if block.get("has_children"):
+            if block.get("has_children") and kind not in {"table", "table_row"}:
                 document.extend(await self._blocks_document(block["id"]))
         return document
 
@@ -204,6 +284,16 @@ class NotionClient:
             if kind == "image":
                 document.append(await self._image(block))
                 continue
+            if kind == "table":
+                document.append(await self._table(block))
+                continue
+            if kind == "table_row":
+                continue
+            if kind in {"video", "embed", "bookmark"}:
+                media = self._media_url_block(block)
+                if media:
+                    document.append(media)
+                continue
             rich = value.get("rich_text", [])
             if rich or kind in {"divider", "to_do", "code", "callout"}:
                 item: dict[str, Any] = {
@@ -216,7 +306,7 @@ class NotionClient:
                 if kind == "callout":
                     item["icon"] = (value.get("icon") or {}).get("emoji")
                 document.append(item)
-            if block.get("has_children") and kind not in {"child_page"}:
+            if block.get("has_children") and kind not in {"child_page", "table"}:
                 nested = await self._blocks_document(block["id"])
                 document.extend(nested)
         return ImportedPage(page_id.replace("-", ""), title, level, document, children)
