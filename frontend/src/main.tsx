@@ -133,6 +133,25 @@ function ScrollTopButton() {
   );
 }
 
+function PageLoader({ label = "Загружаем…" }: { label?: string }) {
+  return (
+    <div className="page-loader" role="status" aria-live="polite" aria-busy="true">
+      <div className="page-loader-orbit" aria-hidden="true">
+        <span className="page-loader-ring" />
+        <span className="page-loader-ring is-inner" />
+        <span className="page-loader-dot" />
+      </div>
+      <p className="page-loader-label">{label}</p>
+      <div className="page-loader-skeleton" aria-hidden="true">
+        <span className="page-loader-line is-title" />
+        <span className="page-loader-line" />
+        <span className="page-loader-line is-mid" />
+        <span className="page-loader-line is-short" />
+      </div>
+    </div>
+  );
+}
+
 function PageOutline({
   sections,
   childrenPages,
@@ -737,9 +756,9 @@ function App() {
   }
   if (loading && !page) {
     return (
-      <main className="shell state">
+      <main className="shell state is-loading" aria-busy="true">
         {nav}
-        <p className="muted">Загружаем путеводитель…</p>
+        <PageLoader label="Загружаем путеводитель…" />
       </main>
     );
   }
@@ -773,6 +792,15 @@ function App() {
     if (index === 0 && country?.title && item.title === country.title) return false;
     return true;
   });
+
+  if (loading) {
+    return (
+      <main className="shell is-loading" aria-busy="true">
+        {nav}
+        <PageLoader label="Открываем раздел…" />
+      </main>
+    );
+  }
 
   return (
     <main className="shell">

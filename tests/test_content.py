@@ -83,6 +83,54 @@ def test_annotate_input_and_checkbox_keys_stable():
     assert "{pmg." not in plain
 
 
+def test_annotate_plain_input_empty_placeholder():
+    document = [
+        {
+            "type": "paragraph",
+            "rich_text": [{"text": "Поле {pmg.field.input(24, )} тут"}],
+        }
+    ]
+    annotated, specs = annotate_document_fields(document)
+    assert len(specs) == 1
+    run = next(r for r in annotated[0]["runs"] if r["type"] == "input")
+    assert run["width"] == 24
+    assert run["placeholder"] == ""
+    plain = "".join(part["text"] for part in annotated[0]["rich_text"])
+    assert plain == "Поле  тут"
+    assert "{pmg." not in plain
+
+
+def test_annotate_nav_gotopage_quoted_text():
+    target = uuid4()
+    document = [
+        {
+            "type": "paragraph",
+            "rich_text": [
+                {"text": '{pmg.nav.gotopage(zhuan.1, "sadfad")} и {pmg.nav.goto(a, \'x\')}'}
+            ],
+        },
+        {
+            "type": "paragraph",
+            "rich_text": [{"text": "{pmg.nav.label(a)}якорь"}],
+        },
+    ]
+    annotated, _specs = annotate_document_fields(
+        document, page_nav={"zhuan.1": target}
+    )
+    gotopage = next(
+        run
+        for run in annotated[0]["runs"]
+        if run.get("type") == "text" and run.get("text") == "sadfad"
+    )
+    assert gotopage["link"] == {"type": "internal", "page_id": str(target)}
+    goto = next(
+        run
+        for run in annotated[0]["runs"]
+        if run.get("type") == "text" and run.get("text") == "x"
+    )
+    assert goto["link"] == {"type": "anchor", "label": "a"}
+
+
 def test_annotate_nav_goto_and_gotopage():
     target = uuid4()
     document = [

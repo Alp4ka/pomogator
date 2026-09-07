@@ -10,13 +10,28 @@ from uuid import UUID
 
 from pomogator.domain.nav import has_nav_tags, iter_nav_tag_spans, resolve_nav_in_document
 
+# Legacy: {pmg.field.input({24,placeholder})}  and plain: {pmg.field.input(24, placeholder)}
 _INPUT_TAG = re.compile(
-    r"\{pmg\.field\.input\(\{(\d+)\s*,\s*(.*?)\}\)\}",
+    r"\{pmg\.field\.input\("
+    r"(?:"
+    r"\{(\d+)\s*,\s*(.*?)\}"  # braced args
+    r"|"
+    r"(\d+)\s*,\s*(.*?)"  # plain args; placeholder may be empty
+    r")"
+    r"\)\}",
     re.IGNORECASE | re.DOTALL,
 )
 _CB_TAG = re.compile(r"\{pmg\.field\.cb\(([^)]*)\)\}", re.IGNORECASE)
 _FIELD_PATTERN = re.compile(
-    r"\{pmg\.field\.input\(\{(\d+)\s*,\s*(.*?)\}\)\}|\{pmg\.field\.cb\(([^)]*)\)\}",
+    r"\{pmg\.field\.input\("
+    r"(?:"
+    r"\{(\d+)\s*,\s*(.*?)\}"
+    r"|"
+    r"(\d+)\s*,\s*(.*?)"
+    r")"
+    r"\)\}"
+    r"|"
+    r"\{pmg\.field\.cb\(([^)]*)\)\}",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -88,9 +103,11 @@ def _merge_adjacent_text(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _field_spans(text: str) -> list[tuple[int, int, str, dict[str, Any]]]:
     spans: list[tuple[int, int, str, dict[str, Any]]] = []
     for match in _FIELD_PATTERN.finditer(text):
-        if match.group(1) is not None:
-            width = max(1, min(120, int(match.group(1))))
-            placeholder = (match.group(2) or "").strip()
+        if match.group(1) is not None or match.group(3) is not None:
+            width_raw = match.group(1) if match.group(1) is not None else match.group(3)
+            placeholder_raw = match.group(2) if match.group(1) is not None else match.group(4)
+            width = max(1, min(120, int(width_raw or "1")))
+            placeholder = (placeholder_raw or "").strip()
             spans.append(
                 (
                     match.start(),
@@ -100,7 +117,7 @@ def _field_spans(text: str) -> list[tuple[int, int, str, dict[str, Any]]]:
                 )
             )
         else:
-            default_raw = match.group(3) or ""
+            default_raw = match.group(5) or ""
             spans.append(
                 (match.start(), match.end(), "checkbox", {"default_raw": default_raw})
             )

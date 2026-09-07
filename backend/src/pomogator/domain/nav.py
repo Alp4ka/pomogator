@@ -9,12 +9,13 @@ from uuid import UUID
 from pomogator.domain.content import normalize_nav_label
 
 _NAV_LABEL_TAG = re.compile(r"\{pmg\.nav\.label\(([^)]*)\)\}", re.IGNORECASE)
+# Display text may be bare or wrapped in "..." / '...'
 _NAV_GOTO_TAG = re.compile(
-    r"\{pmg\.nav\.goto\(([^,)]+)\s*,\s*(.*?)\)\}",
+    r"\{pmg\.nav\.goto\(([^,)]+)\s*,\s*(?:\"([^\"]*)\"|'([^']*)'|(.*?))\)\}",
     re.IGNORECASE | re.DOTALL,
 )
 _NAV_GOTOPAGE_TAG = re.compile(
-    r"\{pmg\.nav\.gotopage\(([^,)]+)\s*,\s*(.*?)\)\}",
+    r"\{pmg\.nav\.gotopage\(([^,)]+)\s*,\s*(?:\"([^\"]*)\"|'([^']*)'|(.*?))\)\}",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -28,6 +29,19 @@ def has_nav_tags(text: str) -> bool:
     return bool(_NAV_ANY.search(text))
 
 
+def normalize_nav_display_text(*candidates: str | None) -> str | None:
+    """Pick first non-empty display text; strip wrapping quotes if present."""
+    for raw in candidates:
+        if raw is None:
+            continue
+        text = raw.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in {"\"", "'"}:
+            text = text[1:-1].strip()
+        if text:
+            return text
+    return None
+
+
 def iter_nav_tag_spans(text: str) -> list[tuple[int, int, str, dict[str, str]]]:
     """Return (start, end, kind, payload) sorted by start for nav tags in text."""
     found: list[tuple[int, int, str, dict[str, str]]] = []
@@ -37,14 +51,14 @@ def iter_nav_tag_spans(text: str) -> list[tuple[int, int, str, dict[str, str]]]:
             found.append((match.start(), match.end(), "nav_label", {"label": label}))
     for match in _NAV_GOTO_TAG.finditer(text):
         label = normalize_nav_label(match.group(1))
-        display = (match.group(2) or "").strip()
+        display = normalize_nav_display_text(match.group(2), match.group(3), match.group(4))
         if label and display:
             found.append(
                 (match.start(), match.end(), "nav_goto", {"label": label, "text": display})
             )
     for match in _NAV_GOTOPAGE_TAG.finditer(text):
         label = normalize_nav_label(match.group(1))
-        display = (match.group(2) or "").strip()
+        display = normalize_nav_display_text(match.group(2), match.group(3), match.group(4))
         if label and display:
             found.append(
                 (
