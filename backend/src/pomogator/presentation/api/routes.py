@@ -13,7 +13,7 @@ from pomogator.application.content_sync import (
     request_country_sync,
     sync_status_payload,
 )
-from pomogator.application.fields import load_field_states, prepare_page_document, set_field_state
+from pomogator.application.fields import load_field_states, set_field_state
 from pomogator.application.payments import PurchaseError, purchase_country_access
 from pomogator.application.pdf_download import pop_pdf_download, store_pdf_download
 from pomogator.application.pdf_export import export_page_pdf
@@ -181,7 +181,9 @@ async def page_pdf_link(page_id: UUID, ctx: Context, request: Request) -> dict[s
     paid = await repo.entitled(user.id, item.country_id)
     if item.access_level == AccessLevel.PAID and not paid:
         raise HTTPException(402, "Country access required")
-    document, _fields_specs = await prepare_page_document(ctx.session, item)
+    document, field_values = await load_field_states(
+        ctx.session, user_id=user.id, page=item
+    )
     pdf_bytes, filename, _export_id = await export_page_pdf(
         ctx.session,
         user=user,
@@ -190,6 +192,7 @@ async def page_pdf_link(page_id: UUID, ctx: Context, request: Request) -> dict[s
         title=item.title,
         document=document,
         entitled=paid,
+        field_values=field_values,
     )
     redis = request.app.state.redis
     token = await store_pdf_download(redis, pdf_bytes=pdf_bytes, filename=filename)
@@ -209,7 +212,9 @@ async def page_pdf(page_id: UUID, ctx: Context, request: Request) -> Response:
     paid = await repo.entitled(user.id, item.country_id)
     if item.access_level == AccessLevel.PAID and not paid:
         raise HTTPException(402, "Country access required")
-    document, _fields_specs = await prepare_page_document(ctx.session, item)
+    document, field_values = await load_field_states(
+        ctx.session, user_id=user.id, page=item
+    )
     pdf_bytes, filename, _export_id = await export_page_pdf(
         ctx.session,
         user=user,
@@ -218,6 +223,7 @@ async def page_pdf(page_id: UUID, ctx: Context, request: Request) -> Response:
         title=item.title,
         document=document,
         entitled=paid,
+        field_values=field_values,
     )
     ascii_name = "guide.pdf"
     disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"

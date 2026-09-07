@@ -7,7 +7,12 @@ from pomogator.domain.pdf_trace import (
     seal_trace,
     unseal_trace,
 )
-from pomogator.infrastructure.pdf.render import _cell_text, render_page_pdf
+from pomogator.infrastructure.pdf.render import (
+    _cell_text,
+    _plain,
+    _register_fonts,
+    render_page_pdf,
+)
 
 
 def test_seal_roundtrip_contains_user_and_subscription_fields():
@@ -42,6 +47,14 @@ def test_seal_roundtrip_contains_user_and_subscription_fields():
     assert extract_disguised_token(disguised) == token
 
 
+def test_register_fonts_uses_bundled_unicode_face():
+    _register_fonts.cache_clear()
+    regular, bold, symbols = _register_fonts()
+    assert regular == "GuideSans"
+    assert bold == "GuideSans-Bold"
+    assert symbols == "GuideSymbols"
+
+
 def test_render_pdf_embeds_disguised_trace():
     export_id = uuid4()
     secret = derive_trace_secret("unit-test-secret")
@@ -67,6 +80,7 @@ def test_render_pdf_embeds_disguised_trace():
     assert pdf.startswith(b"%PDF")
     assert disguise_token(sealed).encode("ascii") in pdf
     assert str(export_id).encode("ascii") in pdf
+    assert b"DejaVu" in pdf
 
 
 def test_cell_text_from_annotated_dict():
@@ -80,6 +94,42 @@ def test_cell_text_from_annotated_dict():
         == "Получаете CPF"
     )
     assert _cell_text([{"text": "1"}]) == "1"
+
+
+def test_plain_uses_field_state_for_inputs_and_checkboxes():
+    runs = [
+        {"type": "text", "text": "A "},
+        {"type": "input", "key": "name", "width": 10, "placeholder": "ФИО"},
+        {"type": "text", "text": " "},
+        {"type": "checkbox", "key": "done", "default": "false"},
+    ]
+    assert _plain(runs, {"name": "Иван", "done": "true"}) == "A Иван ☑"
+    assert _plain(runs, {}) == "A [ФИО] ☐"
+
+
+def test_render_pdf_prefers_runs_and_field_values():
+    export_id = uuid4()
+    pdf = render_page_pdf(
+        title="Гид",
+        document=[
+            {
+                "type": "paragraph",
+                "rich_text": [{"text": "hidden"}],
+                "runs": [
+                    {"type": "text", "text": "Статус: "},
+                    {"type": "checkbox", "key": "ok", "default": "false"},
+                    {"type": "text", "text": " / "},
+                    {"type": "input", "key": "note", "width": 8, "placeholder": "x"},
+                ],
+            }
+        ],
+        export_id=export_id,
+        sealed_token="token",
+        field_values={"ok": "true", "note": "готово"},
+    )
+    assert pdf.startswith(b"%PDF")
+    assert b"hidden" not in pdf
+    assert b"DejaVu" in pdf
 
 
 def test_render_pdf_table_cells_are_readable_text():
@@ -118,3 +168,4 @@ def test_render_pdf_table_cells_are_readable_text():
     assert b"rich_text" not in pdf
     assert b"annotations" not in pdf
     assert b"strikethrough" not in pdf
+    assert b"DejaVu" in pdf

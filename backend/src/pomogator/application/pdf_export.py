@@ -23,6 +23,7 @@ async def export_page_pdf(
     title: str,
     document: list[dict[str, Any]],
     entitled: bool,
+    field_values: dict[str, str] | None = None,
 ) -> tuple[bytes, str, UUID]:
     settings = get_settings()
     secret_source = settings.pdf_trace_secret or settings.telegram_bot_token
@@ -57,5 +58,6 @@ async def export_page_pdf(
         document=document,
         export_id=export_id,
         sealed_token=sealed,
+        field_values=field_values,
     )
     return pdf_bytes, filename_for_title(title), export_id
