@@ -71,6 +71,7 @@ class SyncCountry:
                         notion_page_id=node.notion_page_id,
                         parent_id=parent,
                         title=node.title,
+                        nav_label=node.nav_label,
                         access_level=node.access_level,
                         document=node.document,
                         position=position,
@@ -82,11 +83,20 @@ class SyncCountry:
                     (
                         page.parent_id,
                         page.title,
+                        page.nav_label,
                         page.access_level,
                         page.document,
                         page.position,
                         page.archived,
-                    ) = parent, node.title, node.access_level, node.document, position, False
+                    ) = (
+                        parent,
+                        node.title,
+                        node.nav_label,
+                        node.access_level,
+                        node.document,
+                        position,
+                        False,
+                    )
                 known[node.notion_page_id] = page.id
                 for index, child in enumerate(node.children):
                     await save(child, page.id, index)

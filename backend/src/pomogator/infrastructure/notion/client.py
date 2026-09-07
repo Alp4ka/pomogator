@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from pomogator.domain.content import AccessLevel, parse_access_title
+from pomogator.domain.content import AccessLevel, parse_page_title
 from pomogator.domain.sync_errors import NotionSyncError
 
 log = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class ImportedPage:
     access_level: AccessLevel
     document: list[dict[str, Any]]
     children: list["ImportedPage"] = field(default_factory=list)
+    nav_label: str | None = None
 
 
 @dataclass(slots=True)
@@ -364,7 +365,9 @@ class NotionClient:
             ),
             [],
         )
-        title, level = parse_access_title(self._plain(title_rich) or "Без названия", inherited)
+        title, level, nav_label = parse_page_title(
+            self._plain(title_rich) or "Без названия", inherited
+        )
         document, children = [], []
         for block in await self._all_blocks(page_id):
             kind = block["type"]
@@ -404,7 +407,9 @@ class NotionClient:
             if block.get("has_children") and kind not in {"child_page", "table"}:
                 nested = await self._blocks_document(block["id"])
                 document.extend(nested)
-        return ImportedPage(page_id.replace("-", ""), title, level, document, children)
+        return ImportedPage(
+            page_id.replace("-", ""), title, level, document, children, nav_label=nav_label
+        )
 
     async def import_country(self, page_id: str, slug: str, fallback_flag: str) -> ImportedCountry:
         self.images = {}

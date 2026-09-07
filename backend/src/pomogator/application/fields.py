@@ -29,13 +29,35 @@ async def country_page_index(session: AsyncSession, country_id: UUID) -> dict[st
     return {notion_id: page_id for notion_id, page_id in rows.all()}
 
 
+async def country_nav_index(session: AsyncSession, country_id: UUID) -> dict[str, UUID]:
+    """Map nav_label → page id; first wins by position, then id."""
+    rows = await session.execute(
+        select(PageModel.nav_label, PageModel.id)
+        .where(
+            PageModel.country_id == country_id,
+            PageModel.archived.is_(False),
+            PageModel.nav_label.is_not(None),
+        )
+        .order_by(PageModel.position, PageModel.id)
+    )
+    index: dict[str, UUID] = {}
+    for label, page_id in rows.all():
+        if not label:
+            continue
+        key = str(label).casefold()
+        if key not in index:
+            index[key] = page_id
+    return index
+
+
 async def prepare_page_document(
     session: AsyncSession, page: PageModel
 ) -> tuple[list[dict[str, Any]], dict[str, FieldSpec]]:
-    """Remap Notion internal links, then annotate interactive field runs."""
+    """Remap Notion internal links, annotate fields, resolve nav tags."""
     known = await country_page_index(session, page.country_id)
+    page_nav = await country_nav_index(session, page.country_id)
     document = remap_internal_links(deepcopy(page.document), known)
-    return annotate_document_fields(document)
+    return annotate_document_fields(document, page_nav=page_nav)
 
 
 async def load_field_states(

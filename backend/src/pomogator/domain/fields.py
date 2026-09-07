@@ -1,4 +1,4 @@
-"""Pomogator Notion markup tags: interactive fields."""
+"""Pomogator Notion markup tags: interactive fields + nav tags."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import hashlib
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
+from uuid import UUID
+
+from pomogator.domain.nav import has_nav_tags, iter_nav_tag_spans, resolve_nav_in_document
 
 _INPUT_TAG = re.compile(
     r"\{pmg\.field\.input\(\{(\d+)\s*,\s*(.*?)\}\)\}",
@@ -50,14 +53,15 @@ def normalize_field_value(kind: FieldKind, value: str) -> str:
     return value[:MAX_FIELD_VALUE_LEN]
 
 
-def _text_run(text: str, base: dict[str, Any]) -> dict[str, Any]:
+def _text_run(text: str, base: dict[str, Any], **extra: Any) -> dict[str, Any]:
     run: dict[str, Any] = {
         "type": "text",
         "text": text,
         "annotations": dict(base.get("annotations") or {}),
     }
-    if base.get("link"):
+    if base.get("link") and "nav_goto" not in extra and "nav_gotopage" not in extra:
         run["link"] = base["link"]
+    run.update(extra)
     return run
 
 
@@ -72,6 +76,8 @@ def _merge_adjacent_text(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             and run.get("type") == "text"
             and prev.get("annotations") == run.get("annotations")
             and prev.get("link") == run.get("link")
+            and prev.get("nav_goto") == run.get("nav_goto")
+            and prev.get("nav_gotopage") == run.get("nav_gotopage")
         ):
             prev["text"] = str(prev.get("text", "")) + str(run.get("text", ""))
         else:
@@ -79,19 +85,54 @@ def _merge_adjacent_text(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return merged
 
 
-def _split_text_runs(
-    text: str, base: dict[str, Any], counters: dict[str, int]
-) -> list[dict[str, Any]]:
-    runs: list[dict[str, Any]] = []
-    cursor = 0
+def _field_spans(text: str) -> list[tuple[int, int, str, dict[str, Any]]]:
+    spans: list[tuple[int, int, str, dict[str, Any]]] = []
     for match in _FIELD_PATTERN.finditer(text):
-        if match.start() > cursor:
-            chunk = text[cursor : match.start()]
-            if chunk:
-                runs.append(_text_run(chunk, base))
         if match.group(1) is not None:
             width = max(1, min(120, int(match.group(1))))
             placeholder = (match.group(2) or "").strip()
+            spans.append(
+                (
+                    match.start(),
+                    match.end(),
+                    "input",
+                    {"width": width, "placeholder": placeholder},
+                )
+            )
+        else:
+            default_raw = match.group(3) or ""
+            spans.append(
+                (match.start(), match.end(), "checkbox", {"default_raw": default_raw})
+            )
+    return spans
+
+
+def _split_text_runs(
+    text: str, base: dict[str, Any], counters: dict[str, int]
+) -> list[dict[str, Any]]:
+    events: list[tuple[int, int, str, dict[str, Any]]] = []
+    events.extend(_field_spans(text))
+    events.extend(iter_nav_tag_spans(text))
+    events.sort(key=lambda item: item[0])
+    # Resolve overlaps: keep earlier span.
+    filtered: list[tuple[int, int, str, dict[str, Any]]] = []
+    cursor = 0
+    for start, end, kind, payload in events:
+        if start < cursor:
+            continue
+        filtered.append((start, end, kind, payload))
+        cursor = end
+
+    runs: list[dict[str, Any]] = []
+    pos = 0
+    for start, end, kind, payload in filtered:
+        if start > pos:
+            chunk = text[pos:start]
+            if chunk:
+                runs.append(_text_run(chunk, base))
+        if kind == "input":
+            width = int(payload["width"])
+            placeholder = str(payload["placeholder"])
             signature = f"{width}\0{placeholder.casefold()}"
             counters["input"] = counters.get("input", 0) + 1
             key = field_key("input", signature, counters["input"])
@@ -104,8 +145,8 @@ def _split_text_runs(
                     "default": "",
                 }
             )
-        else:
-            default_raw = match.group(3) or ""
+        elif kind == "checkbox":
+            default_raw = str(payload["default_raw"])
             default_bool = parse_checkbox_default(default_raw)
             signature = f"{default_bool}\0{default_raw.strip().casefold()}"
             counters["checkbox"] = counters.get("checkbox", 0) + 1
@@ -117,9 +158,27 @@ def _split_text_runs(
                     "default": "true" if default_bool else "false",
                 }
             )
-        cursor = match.end()
-    if cursor < len(text):
-        chunk = text[cursor:]
+        elif kind == "nav_label":
+            runs.append({"type": "nav_label", "label": payload["label"]})
+        elif kind == "nav_goto":
+            runs.append(
+                _text_run(
+                    payload["text"],
+                    base,
+                    nav_goto=payload["label"],
+                )
+            )
+        elif kind == "nav_gotopage":
+            runs.append(
+                _text_run(
+                    payload["text"],
+                    base,
+                    nav_gotopage=payload["label"],
+                )
+            )
+        pos = end
+    if pos < len(text):
+        chunk = text[pos:]
         if chunk:
             runs.append(_text_run(chunk, base))
     return runs
@@ -135,7 +194,7 @@ def expand_rich_text(
         text = str(part.get("text", ""))
         if not text:
             continue
-        if _INPUT_TAG.search(text) or _CB_TAG.search(text):
+        if _INPUT_TAG.search(text) or _CB_TAG.search(text) or has_nav_tags(text):
             runs.extend(_split_text_runs(text, part, counters))
         else:
             runs.append(_text_run(text, part))
@@ -147,13 +206,13 @@ def _register_runs(runs: list[dict[str, Any]], specs: dict[str, FieldSpec]) -> l
     for run in runs:
         kind = run.get("type")
         if kind == "text":
-            cleaned.append(
-                {
-                    "text": run.get("text", ""),
-                    "annotations": run.get("annotations") or {},
-                    **({"link": run["link"]} if run.get("link") else {}),
-                }
-            )
+            item: dict[str, Any] = {
+                "text": run.get("text", ""),
+                "annotations": run.get("annotations") or {},
+            }
+            if run.get("link"):
+                item["link"] = run["link"]
+            cleaned.append(item)
         elif kind == "input":
             specs[str(run["key"])] = FieldSpec(
                 key=str(run["key"]),
@@ -168,6 +227,7 @@ def _register_runs(runs: list[dict[str, Any]], specs: dict[str, FieldSpec]) -> l
                 kind="checkbox",
                 default=str(run.get("default") or "false"),
             )
+        # nav_label intentionally omitted from rich_text
     return cleaned
 
 
@@ -183,8 +243,10 @@ def _cell_source_rich(cell: Any) -> list[dict[str, Any]]:
 
 def annotate_document_fields(
     document: list[dict[str, Any]],
+    *,
+    page_nav: dict[str, UUID] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, FieldSpec]]:
-    """Annotate blocks with inline `runs` and collect field specs/defaults."""
+    """Annotate blocks with inline `runs`, resolve nav tags, collect field specs."""
     counters: dict[str, int] = {}
     specs: dict[str, FieldSpec] = {}
     output: list[dict[str, Any]] = []
@@ -214,6 +276,8 @@ def annotate_document_fields(
                 new_rows.append(new_row)
             block["rows"] = new_rows
         output.append(block)
+
+    resolve_nav_in_document(output, page_nav or {})
     return output, specs
 
 

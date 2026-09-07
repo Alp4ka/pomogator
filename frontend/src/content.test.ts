@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOutline, groupBlocks, withHeadingAnchors, type Block } from "./document";
+import { buildOutline, groupBlocks, navDomId, withHeadingAnchors, type Block } from "./document";
 
 describe("content routing", () => {
   it("keeps external and internal links distinct", () => {
@@ -42,6 +42,20 @@ describe("page outline", () => {
     ]);
     expect(blocks[1]?.anchor_id).toBe("section-1");
     expect(blocks[2]?.anchor_id).toBe("section-2");
+  });
+
+  it("prefers nav_anchor ids for outline targets", () => {
+    expect(navDomId("Docs")).toBe("nav-docs");
+    expect(
+      buildOutline([
+        {
+          type: "heading_2",
+          rich_text: [{ text: "Документы" }],
+          anchor_id: "section-1",
+          nav_anchor: "Docs",
+        },
+      ]),
+    ).toEqual([{ id: "nav-docs", level: 2, title: "Документы" }]);
   });
 });
 

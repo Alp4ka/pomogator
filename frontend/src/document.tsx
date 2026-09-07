@@ -3,7 +3,10 @@ import React, { useEffect, useRef } from "react";
 import { YouTubeEmbed, collectYouTubeIds } from "./youtube-embed";
 import { parseYouTubeVideoId } from "./youtube";
 
-export type Link = { type: "external"; url: string } | { type: "internal"; page_id: string };
+export type Link =
+  | { type: "external"; url: string }
+  | { type: "internal"; page_id: string }
+  | { type: "anchor"; label: string };
 export type Rich = { text: string; annotations?: Record<string, boolean>; link?: Link };
 
 export type FieldRun =
@@ -15,13 +18,15 @@ export type FieldRun =
       placeholder: string;
       default?: string;
     }
-  | { type: "checkbox"; key: string; default: string };
+  | { type: "checkbox"; key: string; default: string }
+  | { type: "nav_label"; label: string };
 
 export type TableCell =
   | Rich[]
   | {
       rich_text?: Rich[];
       runs?: FieldRun[];
+      nav_anchor?: string;
     };
 
 export type Block = {
@@ -36,6 +41,7 @@ export type Block = {
   url?: string;
   video_id?: string;
   anchor_id?: string;
+  nav_anchor?: string;
   rows?: TableCell[][];
   has_column_header?: boolean;
   has_row_header?: boolean;
@@ -61,7 +67,9 @@ export function buildOutline(blocks: Block[]): OutlineItem[] {
     const level = Number(block.type.at(-1) ?? "2");
     index += 1;
     items.push({
-      id: block.anchor_id ?? `section-${index}`,
+      id: block.nav_anchor
+        ? navDomId(block.nav_anchor)
+        : (block.anchor_id ?? `section-${index}`),
       level: Math.min(Math.max(level, 1), 4),
       title,
     });
@@ -82,6 +90,47 @@ export function scrollToSection(id: string): void {
   const target = document.getElementById(id);
   if (!target) return;
   target.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+export function navDomId(label: string): string {
+  return `nav-${label.trim().toLocaleLowerCase()}`;
+}
+
+function blockDomId(block: Block): string | undefined {
+  if (block.nav_anchor) return navDomId(block.nav_anchor);
+  return block.anchor_id;
+}
+
+function wrapLink(
+  node: React.ReactNode,
+  link: Link | undefined,
+  onInternal: (id: string) => void,
+): React.ReactNode {
+  if (!link) return node;
+  if (link.type === "external") {
+    return (
+      <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-link">
+        {node}
+      </a>
+    );
+  }
+  if (link.type === "internal" && link.page_id) {
+    const pageId = link.page_id;
+    return (
+      <button type="button" className="text-link" onClick={() => onInternal(pageId)}>
+        {node}
+      </button>
+    );
+  }
+  if (link.type === "anchor" && link.label) {
+    const target = navDomId(link.label);
+    return (
+      <button type="button" className="text-link" onClick={() => scrollToSection(target)}>
+        {node}
+      </button>
+    );
+  }
+  return node;
 }
 
 export function groupBlocks(blocks: Block[]): RenderGroup[] {
@@ -159,22 +208,7 @@ export function RichText({
   return (
     <>
       {items.map((item, index) => {
-        let node = annotatedText(item);
-        if (item.link?.type === "external") {
-          node = (
-            <a href={item.link.url} target="_blank" rel="noopener noreferrer">
-              {node}
-            </a>
-          );
-        }
-        if (item.link?.type === "internal" && item.link.page_id) {
-          const pageId = item.link.page_id;
-          node = (
-            <button type="button" className="text-link" onClick={() => onInternal(pageId)}>
-              {node}
-            </button>
-          );
-        }
+        const node = wrapLink(annotatedText(item), item.link, onInternal);
         return <React.Fragment key={index}>{node}</React.Fragment>;
       })}
     </>
@@ -266,23 +300,11 @@ export function FieldRuns({
   return (
     <>
       {runs.map((run, index) => {
+        if (run.type === "nav_label") {
+          return null;
+        }
         if (run.type === "text") {
-          let node = annotatedText(run);
-          if (run.link?.type === "external") {
-            node = (
-              <a href={run.link.url} target="_blank" rel="noopener noreferrer">
-                {node}
-              </a>
-            );
-          }
-          if (run.link?.type === "internal" && run.link.page_id) {
-            const pageId = run.link.page_id;
-            node = (
-              <button type="button" className="text-link" onClick={() => onInternal(pageId)}>
-                {node}
-              </button>
-            );
-          }
+          const node = wrapLink(annotatedText(run), run.link, onInternal);
           return <React.Fragment key={index}>{node}</React.Fragment>;
         }
         if (run.type === "input") {
@@ -396,8 +418,12 @@ function renderContentBlock(
                     (block.has_row_header && cellIndex === 0);
                   const CellTag = header ? "th" : "td";
                   const normalized = normalizeCell(cell);
+                  const cellId =
+                    !Array.isArray(cell) && cell.nav_anchor
+                      ? navDomId(cell.nav_anchor)
+                      : undefined;
                   return (
-                    <CellTag key={cellIndex}>
+                    <CellTag key={cellIndex} id={cellId}>
                       <FieldRuns
                         runs={normalized.runs}
                         fallback={normalized.rich_text}
@@ -427,7 +453,7 @@ function renderContentBlock(
   if (block.type === "callout") {
     return (
       <BlockWithOptionalVideos key={groupIndex} items={block.rich_text}>
-        <aside className="notion-callout">
+        <aside id={blockDomId(block)} className="notion-callout">
           <span className="callout-icon" aria-hidden>
             {block.icon || "💡"}
           </span>
@@ -439,7 +465,9 @@ function renderContentBlock(
   if (block.type === "quote") {
     return (
       <BlockWithOptionalVideos key={groupIndex} items={block.rich_text}>
-        <blockquote className="notion-quote">{rich(block)}</blockquote>
+        <blockquote id={blockDomId(block)} className="notion-quote">
+          {rich(block)}
+        </blockquote>
       </BlockWithOptionalVideos>
     );
   }
@@ -448,7 +476,7 @@ function renderContentBlock(
     const Tag = (`h${Math.min(Math.max(level, 1), 4)}` as "h1" | "h2" | "h3" | "h4");
     return (
       <BlockWithOptionalVideos key={groupIndex} items={block.rich_text}>
-        <Tag id={block.anchor_id} className={`notion-h notion-h${level}`}>
+        <Tag id={blockDomId(block)} className={`notion-h notion-h${level}`}>
           {rich(block)}
         </Tag>
       </BlockWithOptionalVideos>
@@ -460,7 +488,9 @@ function renderContentBlock(
       items={block.rich_text}
       wrapClass="notion-p-wrap"
     >
-      <p className="notion-p">{rich(block)}</p>
+      <p id={blockDomId(block)} className="notion-p">
+        {rich(block)}
+      </p>
     </BlockWithOptionalVideos>
   );
 }
@@ -504,7 +534,7 @@ export function DocumentBody({
                 const ids = collectYouTubeIds(richYouTubeUrls(item.rich_text));
                 const onlyVideo = isYouTubeOnlyRich(item.rich_text);
                 return (
-                  <li key={itemIndex}>
+                  <li key={itemIndex} id={blockDomId(item)}>
                     {onlyVideo && ids.length ? null : rich(item)}
                     <YouTubeStack ids={ids} />
                   </li>

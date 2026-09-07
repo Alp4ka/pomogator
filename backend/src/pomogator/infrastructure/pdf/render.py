@@ -58,7 +58,35 @@ def filename_for_title(title: str) -> str:
 def _plain(rich: list[dict[str, Any]] | None) -> str:
     if not rich:
         return ""
-    return "".join(str(part.get("text", "")) for part in rich)
+    parts: list[str] = []
+    for part in rich:
+        if not isinstance(part, dict):
+            continue
+        kind = part.get("type")
+        if kind == "checkbox":
+            parts.append("[ ]")
+            continue
+        if kind == "input":
+            placeholder = str(part.get("placeholder") or "").strip()
+            parts.append(f"[{placeholder}]" if placeholder else "______")
+            continue
+        parts.append(str(part.get("text", "")))
+    return "".join(parts)
+
+
+def _cell_text(cell: object) -> str:
+    """Plain text for a table cell (list of rich parts or annotated dict)."""
+    if isinstance(cell, list):
+        return _plain(cell)
+    if isinstance(cell, dict):
+        runs = cell.get("runs")
+        if isinstance(runs, list) and runs:
+            return _plain(runs)
+        rich = cell.get("rich_text")
+        if isinstance(rich, list):
+            return _plain(rich)
+        return ""
+    return ""
 
 
 def render_page_pdf(
@@ -135,12 +163,11 @@ def render_page_pdf(
         if kind == "table":
             rows = block.get("rows") or []
             for row in rows:
-                cells = [
-                    _plain(cell) if isinstance(cell, list) else str(cell)
-                    for cell in row
-                ]
+                if not isinstance(row, list):
+                    continue
+                cells = [_cell_text(cell).replace("\n", " ").strip() for cell in row]
                 draw_wrapped(" | ".join(cells) or " ", regular, 9, 12)
-            y -= 4
+            y -= 6
             continue
         if kind == "code":
             ensure(16)

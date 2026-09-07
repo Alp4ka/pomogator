@@ -423,7 +423,7 @@ button {
 .notion-doc a,
 .notion-doc .text-link {
   color: var(--link);
-  font-weight: 550;
+  font-weight: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
   border: 0;

@@ -7,7 +7,7 @@ from pomogator.domain.pdf_trace import (
     seal_trace,
     unseal_trace,
 )
-from pomogator.infrastructure.pdf.render import render_page_pdf
+from pomogator.infrastructure.pdf.render import _cell_text, render_page_pdf
 
 
 def test_seal_roundtrip_contains_user_and_subscription_fields():
@@ -67,3 +67,54 @@ def test_render_pdf_embeds_disguised_trace():
     assert pdf.startswith(b"%PDF")
     assert disguise_token(sealed).encode("ascii") in pdf
     assert str(export_id).encode("ascii") in pdf
+
+
+def test_cell_text_from_annotated_dict():
+    assert (
+        _cell_text(
+            {
+                "rich_text": [{"text": "Получаете CPF"}],
+                "runs": [{"type": "text", "text": "Получаете CPF"}],
+            }
+        )
+        == "Получаете CPF"
+    )
+    assert _cell_text([{"text": "1"}]) == "1"
+
+
+def test_render_pdf_table_cells_are_readable_text():
+    export_id = uuid4()
+    pdf = render_page_pdf(
+        title="Гид",
+        document=[
+            {
+                "type": "table",
+                "rows": [
+                    [
+                        {
+                            "rich_text": [{"text": "Этап"}],
+                            "runs": [{"type": "text", "text": "Этап"}],
+                        },
+                        {
+                            "rich_text": [{"text": "Что делаете"}],
+                            "runs": [{"type": "text", "text": "Что делаете"}],
+                        },
+                    ],
+                    [
+                        [{"text": "1"}],
+                        {
+                            "rich_text": [{"text": "Получаете CPF"}],
+                            "runs": [{"type": "text", "text": "Получаете CPF"}],
+                        },
+                    ],
+                ],
+            }
+        ],
+        export_id=export_id,
+        sealed_token="token",
+    )
+    assert pdf.startswith(b"%PDF")
+    # Annotated cell dicts must not be dumped into the PDF stream.
+    assert b"rich_text" not in pdf
+    assert b"annotations" not in pdf
+    assert b"strikethrough" not in pdf

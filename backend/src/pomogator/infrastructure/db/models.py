@@ -46,11 +46,13 @@ class PageModel(IdMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("country_id", "notion_page_id"),
         Index("ix_pages_country_parent", "country_id", "parent_id"),
+        Index("ix_pages_country_nav_label", "country_id", "nav_label"),
     )
     country_id: Mapped[UUID] = mapped_column(ForeignKey("countries.id", ondelete="CASCADE"))
     parent_id: Mapped[UUID | None] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"))
     notion_page_id: Mapped[str] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(255))
+    nav_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     access_level: Mapped[AccessLevel] = mapped_column(Enum(AccessLevel, name="access_level"))
     document: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     position: Mapped[int] = mapped_column(Integer, default=0)
