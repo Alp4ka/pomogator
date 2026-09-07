@@ -12,9 +12,14 @@ interface TelegramWebApp {
   initData: string;
   colorScheme: "light" | "dark";
   themeParams?: TelegramThemeParams;
+  /** Bot API 7.7+: false when vertical swipe-to-minimize is disabled. */
+  isVerticalSwipesEnabled?: boolean;
   ready(): void;
   expand(): void;
   close(): void;
+  /** Bot API 7.7+: stop content swipes from minimizing the Mini App. */
+  disableVerticalSwipes?(): void;
+  enableVerticalSwipes?(): void;
   onEvent?(event: string, callback: () => void): void;
   offEvent?(event: string, callback: () => void): void;
   BackButton: {

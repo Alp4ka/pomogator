@@ -131,6 +131,33 @@ def test_annotate_nav_gotopage_quoted_text():
     assert goto["link"] == {"type": "anchor", "label": "a"}
 
 
+def test_annotate_nav_gotopage_split_across_notion_runs():
+    """Notion often splits tags (esp. with typographic quotes) into several rich_text parts."""
+    target = uuid4()
+    document = [
+        {
+            "type": "paragraph",
+            "rich_text": [
+                {"text": "{pmg.nav.gotopage(zhuan.1, ", "annotations": {}},
+                {"text": "\u201c1 Этап . CPF\u201d", "annotations": {"bold": True}},
+                {"text": ")}", "annotations": {}},
+            ],
+        },
+    ]
+    annotated, _specs = annotate_document_fields(
+        document, page_nav={"zhuan.1": target}
+    )
+    plain = "".join(part["text"] for part in annotated[0]["rich_text"])
+    assert plain == "1 Этап . CPF"
+    assert "{pmg." not in plain
+    link_run = next(
+        run
+        for run in annotated[0]["runs"]
+        if run.get("type") == "text" and run.get("text") == "1 Этап . CPF"
+    )
+    assert link_run["link"] == {"type": "internal", "page_id": str(target)}
+
+
 def test_annotate_nav_goto_and_gotopage():
     target = uuid4()
     document = [

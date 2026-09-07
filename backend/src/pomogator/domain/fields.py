@@ -124,12 +124,69 @@ def _field_spans(text: str) -> list[tuple[int, int, str, dict[str, Any]]]:
     return spans
 
 
-def _split_text_runs(
-    text: str, base: dict[str, Any], counters: dict[str, int]
+def _plain_runs_from_joined(
+    joined: str, bases: list[dict[str, Any]], start: int, end: int
+) -> list[dict[str, Any]]:
+    """Emit plain text runs for joined[start:end], preserving per-segment annotations."""
+    runs: list[dict[str, Any]] = []
+    i = start
+    while i < end:
+        base = bases[i]
+        j = i + 1
+        while j < end and bases[j] is base:
+            j += 1
+        chunk = joined[i:j]
+        if chunk:
+            runs.append(_text_run(chunk, base))
+        i = j
+    return runs
+
+
+def _emit_markup_run(
+    kind: str,
+    payload: dict[str, Any],
+    base: dict[str, Any],
+    counters: dict[str, int],
+) -> dict[str, Any]:
+    if kind == "input":
+        width = int(payload["width"])
+        placeholder = str(payload["placeholder"])
+        signature = f"{width}\0{placeholder.casefold()}"
+        counters["input"] = counters.get("input", 0) + 1
+        key = field_key("input", signature, counters["input"])
+        return {
+            "type": "input",
+            "key": key,
+            "width": width,
+            "placeholder": placeholder,
+            "default": "",
+        }
+    if kind == "checkbox":
+        default_raw = str(payload["default_raw"])
+        default_bool = parse_checkbox_default(default_raw)
+        signature = f"{default_bool}\0{default_raw.strip().casefold()}"
+        counters["checkbox"] = counters.get("checkbox", 0) + 1
+        key = field_key("checkbox", signature, counters["checkbox"])
+        return {
+            "type": "checkbox",
+            "key": key,
+            "default": "true" if default_bool else "false",
+        }
+    if kind == "nav_label":
+        return {"type": "nav_label", "label": payload["label"]}
+    if kind == "nav_goto":
+        return _text_run(payload["text"], base, nav_goto=payload["label"])
+    if kind == "nav_gotopage":
+        return _text_run(payload["text"], base, nav_gotopage=payload["label"])
+    return _text_run("", base)
+
+
+def _split_joined_markup(
+    joined: str, bases: list[dict[str, Any]], counters: dict[str, int]
 ) -> list[dict[str, Any]]:
     events: list[tuple[int, int, str, dict[str, Any]]] = []
-    events.extend(_field_spans(text))
-    events.extend(iter_nav_tag_spans(text))
+    events.extend(_field_spans(joined))
+    events.extend(iter_nav_tag_spans(joined))
     events.sort(key=lambda item: item[0])
     # Resolve overlaps: keep earlier span.
     filtered: list[tuple[int, int, str, dict[str, Any]]] = []
@@ -144,78 +201,37 @@ def _split_text_runs(
     pos = 0
     for start, end, kind, payload in filtered:
         if start > pos:
-            chunk = text[pos:start]
-            if chunk:
-                runs.append(_text_run(chunk, base))
-        if kind == "input":
-            width = int(payload["width"])
-            placeholder = str(payload["placeholder"])
-            signature = f"{width}\0{placeholder.casefold()}"
-            counters["input"] = counters.get("input", 0) + 1
-            key = field_key("input", signature, counters["input"])
-            runs.append(
-                {
-                    "type": "input",
-                    "key": key,
-                    "width": width,
-                    "placeholder": placeholder,
-                    "default": "",
-                }
-            )
-        elif kind == "checkbox":
-            default_raw = str(payload["default_raw"])
-            default_bool = parse_checkbox_default(default_raw)
-            signature = f"{default_bool}\0{default_raw.strip().casefold()}"
-            counters["checkbox"] = counters.get("checkbox", 0) + 1
-            key = field_key("checkbox", signature, counters["checkbox"])
-            runs.append(
-                {
-                    "type": "checkbox",
-                    "key": key,
-                    "default": "true" if default_bool else "false",
-                }
-            )
-        elif kind == "nav_label":
-            runs.append({"type": "nav_label", "label": payload["label"]})
-        elif kind == "nav_goto":
-            runs.append(
-                _text_run(
-                    payload["text"],
-                    base,
-                    nav_goto=payload["label"],
-                )
-            )
-        elif kind == "nav_gotopage":
-            runs.append(
-                _text_run(
-                    payload["text"],
-                    base,
-                    nav_gotopage=payload["label"],
-                )
-            )
+            runs.extend(_plain_runs_from_joined(joined, bases, pos, start))
+        base = bases[start] if 0 <= start < len(bases) else {}
+        runs.append(_emit_markup_run(kind, payload, base, counters))
         pos = end
-    if pos < len(text):
-        chunk = text[pos:]
-        if chunk:
-            runs.append(_text_run(chunk, base))
+    if pos < len(joined):
+        runs.extend(_plain_runs_from_joined(joined, bases, pos, len(joined)))
     return runs
 
 
 def expand_rich_text(
     rich: list[dict[str, Any]] | None, counters: dict[str, int]
 ) -> list[dict[str, Any]]:
+    """Expand field/nav tags. Join Notion rich_text parts first — tags often span runs."""
     if not rich:
         return []
-    runs: list[dict[str, Any]] = []
+    segments: list[tuple[str, dict[str, Any]]] = []
     for part in rich:
         text = str(part.get("text", ""))
-        if not text:
-            continue
-        if _INPUT_TAG.search(text) or _CB_TAG.search(text) or has_nav_tags(text):
-            runs.extend(_split_text_runs(text, part, counters))
-        else:
-            runs.append(_text_run(text, part))
-    return _merge_adjacent_text(runs)
+        if text:
+            segments.append((text, part))
+    if not segments:
+        return []
+
+    joined = "".join(text for text, _ in segments)
+    if not (_INPUT_TAG.search(joined) or _CB_TAG.search(joined) or has_nav_tags(joined)):
+        return _merge_adjacent_text([_text_run(text, part) for text, part in segments])
+
+    bases: list[dict[str, Any]] = []
+    for text, part in segments:
+        bases.extend([part] * len(text))
+    return _merge_adjacent_text(_split_joined_markup(joined, bases, counters))
 
 
 def _register_runs(runs: list[dict[str, Any]], specs: dict[str, FieldSpec]) -> list[dict[str, Any]]:

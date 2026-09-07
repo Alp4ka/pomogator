@@ -29,14 +29,26 @@ def has_nav_tags(text: str) -> bool:
     return bool(_NAV_ANY.search(text))
 
 
+_DISPLAY_QUOTE_PAIRS = (
+    ('"', '"'),
+    ("'", "'"),
+    ("\u201c", "\u201d"),  # “ ”
+    ("\u2018", "\u2019"),  # ‘ ’
+    ("\u00ab", "\u00bb"),  # « »
+)
+
+
 def normalize_nav_display_text(*candidates: str | None) -> str | None:
     """Pick first non-empty display text; strip wrapping quotes if present."""
     for raw in candidates:
         if raw is None:
             continue
         text = raw.strip()
-        if len(text) >= 2 and text[0] == text[-1] and text[0] in {"\"", "'"}:
-            text = text[1:-1].strip()
+        if len(text) >= 2:
+            for left, right in _DISPLAY_QUOTE_PAIRS:
+                if text[0] == left and text[-1] == right:
+                    text = text[1:-1].strip()
+                    break
         if text:
             return text
     return None

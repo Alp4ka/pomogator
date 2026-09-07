@@ -494,6 +494,8 @@ function App() {
   useEffect(() => {
     tg?.ready();
     tg?.expand();
+    // Tables/long docs: vertical pan must not collapse the Mini App.
+    tg?.disableVerticalSwipes?.();
     const onOnline = () => {
       setOfflineMode(false);
       void flushFieldQueue();
