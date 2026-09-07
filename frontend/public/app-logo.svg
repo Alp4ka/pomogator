@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pomogator">
+  <rect width="512" height="512" rx="96" fill="#E8DFD0"/>
+  <path fill="#0F6B6B" d="M156 120h128c74 0 120 42 120 108s-46 108-120 108H212v96c0 14-11 24-24 24s-24-10-24-24V144c0-14 11-24 24-24zm56 168h72c40 0 64-22 64-60s-24-60-64-60h-72v120z"/>
+  <circle cx="360" cy="152" r="34" fill="#E07A5F"/>
+  <path fill="#E07A5F" d="M360 186c-18 28-34 52-34 70 0 19 15 34 34 34s34-15 34-34c0-18-16-42-34-70z"/>
+  <circle cx="360" cy="248" r="12" fill="#E8DFD0"/>
+</svg>
