@@ -24,6 +24,8 @@ interface TelegramWebApp {
   enableVerticalSwipes?(): void;
   onEvent?(event: string, callback: () => void): void;
   offEvent?(event: string, callback: () => void): void;
+  safeAreaInset?: { top: number; bottom: number; left: number; right: number };
+  contentSafeAreaInset?: { top: number; bottom: number; left: number; right: number };
   BackButton: {
     show(): void;
     hide(): void;

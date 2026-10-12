@@ -50,6 +50,15 @@ function mergeTheme(params: ThemeParams | undefined, scheme: "light" | "dark"): 
   };
 }
 
+const TELEGRAM_HEADER_FALLBACK_PX = 56;
+
+export function applyTelegramChrome(): void {
+  const tg = window.Telegram?.WebApp;
+  const reported = Math.max(0, tg?.contentSafeAreaInset?.top ?? 0);
+  const top = reported > 0 ? reported : tg?.initData ? TELEGRAM_HEADER_FALLBACK_PX : 0;
+  document.documentElement.style.setProperty("--tg-chrome-top", `${top}px`);
+}
+
 export function applyTheme(): "light" | "dark" {
   const tg = window.Telegram?.WebApp;
   const scheme = (tg?.colorScheme as "light" | "dark" | undefined) ?? readOsScheme();
@@ -69,6 +78,7 @@ export function applyTheme(): "light" | "dark" {
   if (themeMeta) themeMeta.setAttribute("content", chrome);
   tg?.setHeaderColor?.(chrome);
   tg?.setBackgroundColor?.(chrome);
+  applyTelegramChrome();
   return scheme;
 }
 
@@ -81,8 +91,13 @@ export function bindThemeListeners(onChange?: (scheme: "light" | "dark") => void
   media.addEventListener("change", refresh);
   const tg = window.Telegram?.WebApp;
   tg?.onEvent?.("themeChanged", refresh);
+  tg?.onEvent?.("contentSafeAreaChanged", applyTelegramChrome);
+  tg?.onEvent?.("safeAreaChanged", applyTelegramChrome);
+  applyTelegramChrome();
   return () => {
     media.removeEventListener("change", refresh);
     tg?.offEvent?.("themeChanged", refresh);
+    tg?.offEvent?.("contentSafeAreaChanged", applyTelegramChrome);
+    tg?.offEvent?.("safeAreaChanged", applyTelegramChrome);
   };
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { BottomDock, ChildList, CountryHome, Hero, PageLoader, SectionTabs } from "./chrome";
+import { BottomDock, ChildList, ContentsNav, CountryHome, Hero, PageLoader } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
@@ -183,6 +183,16 @@ const READER_BLOCKS: Block[] = [
     rich_text: [{ text: "Заключить договор аренды" }],
   },
   {
+    type: "paragraph",
+    rich_text: [
+      { text: "Когда делать перевод: только после прилёта в Бразилию. Не делайте перевод в России — это бесполезно." },
+    ],
+  },
+  {
+    type: "paragraph",
+    rich_text: [{ text: "Где найти присяжного переводчика:" }],
+  },
+  {
     type: "quote",
     rich_text: [{ text: "Не откладывайте страховку на первую неделю — она нужна уже в аэропорту." }],
   },
@@ -255,7 +265,7 @@ export function PreviewApp() {
           </div>
         </header>
       )}
-      <SectionTabs items={outline.filter((item) => item.level <= 2)} onSelect={scrollToSection} />
+      <ContentsNav items={outline.filter((item) => item.level <= 2)} onSelect={scrollToSection} />
       {view === "hub" ? (
         <ChildList
           title="Разделы"

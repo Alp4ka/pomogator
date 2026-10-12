@@ -58,13 +58,14 @@ export function Hero({
   );
 }
 
-export function SectionTabs({
+export function ContentsNav({
   items,
   onSelect,
 }: {
   items: { id: string; title: string }[];
   onSelect: (id: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [active, setActive] = useState(items[0]?.id ?? "");
   const itemKey = items.map((item) => item.id).join("|");
   const selected = items.some((item) => item.id === active) ? active : (items[0]?.id ?? "");
@@ -89,26 +90,66 @@ export function SectionTabs({
     return () => observer.disconnect();
   }, [itemKey, items]);
 
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   if (!items.length) return null;
 
   return (
-    <nav className="section-tabs" aria-label="Разделы на странице">
-      <div className="section-tabs-scroller">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`section-tab ${selected === item.id ? "is-active" : ""}`}
-            onClick={() => {
-              setActive(item.id);
-              onSelect(item.id);
-            }}
-          >
-            {item.title}
-          </button>
-        ))}
-      </div>
-    </nav>
+    <>
+      {open ? null : (
+        <button
+          type="button"
+          className="toc-fab"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+        >
+          <Icon name="list" />
+          <span>Содержание</span>
+        </button>
+      )}
+      {open ? (
+        <div className="toc-layer">
+          <button type="button" className="toc-backdrop" aria-label="Закрыть содержание" onClick={() => setOpen(false)} />
+          <div className="toc-sheet" role="dialog" aria-modal="true" aria-labelledby="toc-title">
+            <div className="toc-sheet-head">
+              <h2 id="toc-title">Содержание</h2>
+              <button type="button" className="toc-sheet-close" onClick={() => setOpen(false)}>
+                Закрыть
+              </button>
+            </div>
+            <nav className="toc-sheet-list" aria-label="Разделы на странице">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`toc-sheet-item ${selected === item.id ? "is-active" : ""}`}
+                  onClick={() => {
+                    setActive(item.id);
+                    setOpen(false);
+                    onSelect(item.id);
+                  }}
+                >
+                  {item.title}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

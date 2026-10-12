@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BottomDock, ChildList, CountryHome, Hero, PageLoader, SectionTabs } from "./chrome";
+import { BottomDock, ChildList, ContentsNav, CountryHome, Hero, PageLoader } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
@@ -31,7 +31,7 @@ import {
   hasTelegramSession,
   type SessionFailure,
 } from "./session";
-import { applyTheme, bindThemeListeners } from "./theme";
+import { applyTelegramChrome, applyTheme, bindThemeListeners } from "./theme";
 import "./style.css";
 
 type HistoryItem = { id: string; title: string };
@@ -462,10 +462,13 @@ function App() {
   useEffect(() => {
     tg?.ready();
     tg?.expand();
+    applyTelegramChrome();
     // Tables/long docs: vertical pan must not collapse the Mini App.
     tg?.disableVerticalSwipes?.();
+    document.documentElement.classList.toggle("is-telegram", hasTelegramSession());
     const unbindTheme = bindThemeListeners();
     return () => {
+      document.documentElement.classList.remove("is-telegram");
       unbindTheme();
     };
   }, []);
@@ -861,7 +864,7 @@ function App() {
         </header>
       )}
       {notices}
-      <SectionTabs items={tabItems} onSelect={scrollToSection} />
+      <ContentsNav items={tabItems} onSelect={scrollToSection} />
       <ChildList
         title={page.children.length ? "Разделы" : undefined}
         items={page.children}
