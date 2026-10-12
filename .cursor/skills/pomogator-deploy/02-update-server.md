@@ -2,10 +2,12 @@
 
 Use after code was pushed (see [01-deliver-code.md](01-deliver-code.md)).
 
+Resolve `DESTINATION_ADDRESS` first (environment, else repo `.env`) — see [SKILL.md](SKILL.md).
+
 ## Steps
 
 ```bash
-ssh root@134.209.253.10
+ssh "root@${DESTINATION_ADDRESS}"
 cd /root/pomogator
 git fetch origin
 git pull --ff-only origin main
@@ -15,7 +17,7 @@ git log -1 --oneline
 Non-interactive agent form:
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 \
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" \
   'cd /root/pomogator && git fetch origin && git pull --ff-only origin main && git log -1 --oneline'
 ```
 

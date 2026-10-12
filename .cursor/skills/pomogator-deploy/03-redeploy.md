@@ -2,6 +2,8 @@
 
 Use after [02-update-server.md](02-update-server.md) and/or after [04-deliver-secrets.md](04-deliver-secrets.md). Containers only pick up a new `.env` after recreate.
 
+Resolve `DESTINATION_ADDRESS` first (environment, else repo `.env`) — see [SKILL.md](SKILL.md).
+
 ## Choose scope
 
 | Change | Services |
@@ -18,31 +20,31 @@ Use after [02-update-server.md](02-update-server.md) and/or after [04-deliver-se
 Targeted:
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 \
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" \
   'cd /root/pomogator && docker compose up -d --build <services>'
 ```
 
 Full rebuild + recreate (env refresh):
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 \
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" \
   'cd /root/pomogator && docker compose up -d --build --force-recreate'
 ```
 
 Migrations (after schema changes or full redeploy):
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 \
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" \
   'cd /root/pomogator && docker compose exec -T api alembic upgrade head'
 ```
 
 ## Verify
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 \
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" \
   'cd /root/pomogator && docker compose ps && docker compose logs --no-color --tail=80 bot api caddy'
-curl -fsS https://ggarpomogator.ru/health
-curl -fsS https://ggarpomogator.ru/ready
+curl -fsS https://pomogator.me/health
+curl -fsS https://pomogator.me/ready
 ```
 
 Expect bot log: SOCKS disabled / long polling via **direct** on the foreign VPS (unless `SOCKS_ENABLED=true` was intentionally set).

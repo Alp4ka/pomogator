@@ -94,14 +94,19 @@ make lint && make test
 
 ### Production host
 
+Хост не зашит в репозиторий. Перед любым `ssh`/`scp` взять `DESTINATION_ADDRESS`:
+
+1. из переменной окружения, если она задана;
+2. иначе из строки `DESTINATION_ADDRESS=` в локальном `.env` (не печатать остальные ключи).
+
+Если оба пустые — остановиться и попросить задать `DESTINATION_ADDRESS`.
+
 | Параметр | Значение |
 |----------|----------|
-| SSH | `root@134.209.253.10` |
+| SSH | `root@${DESTINATION_ADDRESS}` |
 | Каталог приложения | `/root/pomogator` (или `~/pomogator` под root) |
-| Домен Mini App | `ggarpomogator.ru` (DNS A → этот IP) |
+| Домен Mini App | `pomogator.me` (DNS A → этот адрес) |
 | Auth | предпочтительно SSH-ключ; пароль root — только вне git/чата (см. ниже) |
-
-Старый хост `user1@45.151.30.135` больше не используется.
 
 ### Как передавать секреты агенту (не в чат)
 
@@ -109,7 +114,7 @@ make lint && make test
 
 Правильный порядок:
 
-1. **SSH:** настроить ключ (`ssh-copy-id root@134.209.253.10`) или `~/.ssh/config` + `IdentityFile`. Агент ходит по ключу без пароля в промпте.
+1. **SSH:** настроить ключ (`ssh-copy-id root@$DESTINATION_ADDRESS`) или `~/.ssh/config` + `IdentityFile`. Агент ходит по ключу без пароля в промпте. Адрес — из окружения или `.env`, см. выше.
 2. **`.env`:** держать локально и на сервере в gitignored файлах. Агент читает с диска по необходимости и **не** цитирует значения в ответах.
 3. **Одноразово:** положить секрет в локальный файл вне репо, например `~/.config/pomogator/secrets.env` (права `600`), сказать агенту путь. После использования файл можно удалить.
 4. **Не делать:** пароль/токен в чате, в `AGENTS.md`, в коммитах, в issue/PR.
@@ -120,7 +125,7 @@ make lint && make test
 
 - Remote: `origin` → GitHub (`Alp4ka/pomogator`).
 - Рабочая ветка для продакшена: `main` (пока нет release-ветки).
-- На сервере: клон в `/root/pomogator`, доступ `root@134.209.253.10`.
+- На сервере: клон в `/root/pomogator`, доступ `root@$DESTINATION_ADDRESS`.
 
 ### Локально (агент / разработчик)
 
@@ -138,7 +143,7 @@ git push origin HEAD
 ### На сервере
 
 ```bash
-ssh root@134.209.253.10
+ssh "root@${DESTINATION_ADDRESS}"
 cd /root/pomogator
 git fetch origin
 git pull --ff-only origin main
@@ -160,8 +165,8 @@ docker compose up -d --build <сервисы>
 ```bash
 docker compose ps
 docker compose logs --tail=80 bot api caddy
-curl -fsS https://ggarpomogator.ru/health
-curl -fsS https://ggarpomogator.ru/ready
+curl -fsS https://pomogator.me/health
+curl -fsS https://pomogator.me/ready
 ```
 
 ### Правила для агента Cursor
@@ -174,7 +179,7 @@ curl -fsS https://ggarpomogator.ru/ready
 
 ### Первичный bootstrap сервера (редко)
 
-Один раз: Docker, клон репо в `/root/pomogator`, `.env` из `.env.example`, DNS `ggarpomogator.ru` → `134.209.253.10`, `docker compose up --build -d`, миграции, URL Mini App в BotFather. Дальнейшие обновления — только git pull.
+Один раз: Docker, клон репо в `/root/pomogator`, `.env` из `.env.example`, DNS `pomogator.me` → адрес из `DESTINATION_ADDRESS`, `docker compose up --build -d`, миграции, URL Mini App в BotFather. Дальнейшие обновления — только git pull.
 
 ## Конфигурация
 
@@ -185,6 +190,7 @@ curl -fsS https://ggarpomogator.ru/ready
 - `TELEGRAM_BOT_TOKEN`, `NOTION_TOKEN`, `NOTION_COUNTRIES`
 - `ALLOW_STUB_PAYMENTS_IN_PRODUCTION=true` пока платежи — stub
 - `TELEGRAM_SOCKS_PROXY_LIST_URL` — список SOCKS5 для failover бота
+- `DESTINATION_ADDRESS` — SSH-хост продакшена для агента (окружение или локальный `.env`). Приложение его не читает
 
 ## Observability
 

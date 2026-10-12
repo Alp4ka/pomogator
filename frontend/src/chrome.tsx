@@ -49,10 +49,10 @@ export function Hero({
           <span>{location}</span>
         </p>
       ) : null}
+      <span className={`access hero-access ${paid ? "is-paid" : "is-free"}`}>{accessLabel}</span>
       <div className="hero-copy">
         <h1>{title}</h1>
         {lede ? <p className="hero-lede">{lede}</p> : null}
-        <span className={`access ${paid ? "is-paid" : "is-free"}`}>{accessLabel}</span>
       </div>
     </header>
   );

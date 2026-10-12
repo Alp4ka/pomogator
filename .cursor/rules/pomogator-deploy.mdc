@@ -15,3 +15,5 @@ For any production ship, redeploy, server update, or secrets/`.env` delivery:
    - secrets → `04-deliver-secrets.md`
 
 Do not use rsync/scp for application source. Do not put secrets in chat or commits.
+
+Production SSH host is `root@$DESTINATION_ADDRESS`. Take `DESTINATION_ADDRESS` from the environment; if unset, from the repo `.env`. Never hardcode the IP.

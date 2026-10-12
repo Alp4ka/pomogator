@@ -354,7 +354,7 @@ button {
   gap: 6px;
   justify-items: start;
   min-height: 210px;
-  padding: 72px 18px 18px;
+  padding: 88px 18px 20px;
 }
 .hero.has-image .hero-copy { min-height: 230px; }
 .hero-copy h1 {
@@ -374,11 +374,17 @@ button {
   font-weight: 500;
   line-height: 1.4;
 }
-.hero .access {
-  margin-top: 4px;
+.hero-access {
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  z-index: 2;
+  margin: 0;
+  padding: 4px 9px;
   border-color: color-mix(in srgb, #fff 35%, transparent);
   color: #fff;
-  background: color-mix(in srgb, #fff 14%, transparent);
+  background: color-mix(in srgb, #fff 16%, transparent);
+  font-size: 11px;
 }
 
 .reader-head {

@@ -604,7 +604,10 @@ function CalloutGrid({
   const compact =
     items.length >= 3 &&
     items.length <= 4 &&
-    items.every((item) => plainRichText(item.rich_text).length <= 72);
+    items.every((item) => {
+      const split = splitCalloutText(item.rich_text);
+      return split.title.length <= 18 && split.body.length <= 28;
+    });
   return (
     <div className={`callout-grid ${compact ? "is-compact" : ""}`}>
       {items.map((item, index) => {

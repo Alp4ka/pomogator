@@ -25,12 +25,37 @@ Ask if missing:
 
 Do **not** invent telegram ids or slugs.
 
-## Production (preferred)
+## Resolve the production host
 
-SSH + Docker API container. App dir `/root/pomogator`, host `root@134.209.253.10`.
+Do this from the repo root before production SSH. Never hardcode an IP.
+
+1. Use `DESTINATION_ADDRESS` from the process environment when it is set.
+2. Otherwise read the `DESTINATION_ADDRESS=` line from the repo `.env`. Do not print other keys.
+3. If both are empty, stop and tell the user to set `DESTINATION_ADDRESS`.
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 'cd /root/pomogator && docker compose exec -T api pomogator-entitlement --telegram-id <TG_ID> --country <slug> --enable'
+if [ -z "${DESTINATION_ADDRESS:-}" ]; then
+  DESTINATION_ADDRESS="$(
+    grep -E '^[[:space:]]*DESTINATION_ADDRESS=' .env \
+      | head -n 1 \
+      | cut -d= -f2- \
+      | tr -d '"' \
+      | tr -d "'" \
+      | tr -d '[:space:]'
+  )"
+fi
+if [ -z "${DESTINATION_ADDRESS:-}" ]; then
+  echo "DESTINATION_ADDRESS is missing from the environment and from .env" >&2
+  exit 1
+fi
+```
+
+## Production (preferred)
+
+SSH + Docker API container. App dir `/root/pomogator`, host `root@${DESTINATION_ADDRESS}`.
+
+```bash
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" 'cd /root/pomogator && docker compose exec -T api pomogator-entitlement --telegram-id <TG_ID> --country <slug> --enable'
 ```
 
 Other actions: `--disable` or `--status`.
@@ -38,7 +63,7 @@ Other actions: `--disable` or `--status`.
 If `pomogator-entitlement` is missing (image not rebuilt yet), run the module:
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 'cd /root/pomogator && docker compose exec -T api python -m pomogator.cli.entitlement --telegram-id <TG_ID> --country <slug> --enable'
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" 'cd /root/pomogator && docker compose exec -T api python -m pomogator.cli.entitlement --telegram-id <TG_ID> --country <slug> --enable'
 ```
 
 If the module is also missing on the server, use the **fallback inline script** below (works with current models without a new deploy).
@@ -57,7 +82,7 @@ Requires local DB/`DATABASE_URL` matching `.env`.
 Pipe into the running `api` container (production example):
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 'cd /root/pomogator && docker compose exec -T api python -' <<'PY'
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" 'cd /root/pomogator && docker compose exec -T api python -' <<'PY'
 import asyncio, sys
 from sqlalchemy import select
 from pomogator.infrastructure.db.base import SessionFactory
@@ -105,7 +130,7 @@ PY
 Pass args after `-` does not work with heredoc stdin. Prefer env vars:
 
 ```bash
-ssh -o BatchMode=yes root@134.209.253.10 "cd /root/pomogator && docker compose exec -T \
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" "cd /root/pomogator && docker compose exec -T \
   -e TG_ID=<TG_ID> -e SLUG=<slug> -e ACTION=enable api python -" <<'PY'
 import asyncio, os, sys
 from sqlalchemy import select

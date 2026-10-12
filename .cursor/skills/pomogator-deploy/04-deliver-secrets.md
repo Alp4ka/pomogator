@@ -2,6 +2,8 @@
 
 Use when updating production `.env` or individual secrets (tokens, passwords, Notion, Telegram). **Never** put secrets in chat, commits, `AGENTS.md`, PRs, or agent replies.
 
+Resolve `DESTINATION_ADDRESS` first (environment, else repo `.env`) — see [SKILL.md](SKILL.md). The running app does not read this key.
+
 ## Sources (prefer in order)
 
 1. Local gitignored repo `.env` (agent reads from disk; does not print values)
@@ -26,11 +28,11 @@ Do **not** ask the user to paste tokens into the chat.
 ## Full `.env` replace (bootstrap / rare)
 
 ```bash
-scp -o BatchMode=yes /path/to/local.env root@134.209.253.10:/root/pomogator/.env
-ssh -o BatchMode=yes root@134.209.253.10 'chmod 600 /root/pomogator/.env'
+scp -o BatchMode=yes /path/to/local.env "root@${DESTINATION_ADDRESS}:/root/pomogator/.env"
+ssh -o BatchMode=yes "root@${DESTINATION_ADDRESS}" 'chmod 600 /root/pomogator/.env'
 ```
 
-Ensure production overrides are set when building from local: `APP_ENV=production`, `APP_DOMAIN=ggarpomogator.ru`, `TELEGRAM_WEBAPP_URL=https://ggarpomogator.ru`, `REDIS_URL=redis://redis:6379/0`, `SOCKS_ENABLED=false` (foreign VPS), stub payments flag as required.
+Ensure production overrides are set when building from local: `APP_ENV=production`, `APP_DOMAIN=pomogator.me`, `TELEGRAM_WEBAPP_URL=https://pomogator.me`, `REDIS_URL=redis://redis:6379/0`, `SOCKS_ENABLED=false` (foreign VPS), stub payments flag as required.
 
 ## After secrets change
 
