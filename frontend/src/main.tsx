@@ -450,13 +450,10 @@ function App() {
       setOfflineMode(false);
       void flushFieldQueue();
     };
-    const onOffline = () => setOfflineMode(true);
     window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
     const unbindTheme = bindThemeListeners();
     return () => {
       window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
       unbindTheme();
     };
   }, []);
@@ -476,8 +473,7 @@ function App() {
     let active = true;
     Promise.all(
       ids.map(async (id) => {
-        const { blob, meta } = await getImageBlob(id);
-        if (meta.fromCache) setOfflineMode(true);
+        const { blob } = await getImageBlob(id);
         const objectUrl = URL.createObjectURL(blob);
         createdUrls.push(objectUrl);
         return [id, objectUrl] as const;
@@ -762,7 +758,7 @@ function App() {
 
   const notices = (
     <>
-      {offlineMode || !navigator.onLine ? (
+      {offlineMode ? (
         <p className="offline-banner" role="status">
           Офлайн-режим: показана последняя сохранённая версия. Навигация по уже открытым разделам
           работает.
