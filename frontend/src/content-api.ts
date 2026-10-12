@@ -20,6 +20,13 @@ export type Country = {
   sync_status?: string;
 };
 
+export type CountryListItem = {
+  slug: string;
+  title: string;
+  flag: string;
+  paid: boolean;
+};
+
 export type SyncStatus = {
   slug: string;
   content_version: number;
@@ -49,6 +56,10 @@ async function networkJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (response.status === 402) throw new ApiError(402, "paid");
   if (!response.ok) throw new ApiError(response.status, `http:${response.status}`);
   return response.json() as Promise<T>;
+}
+
+export async function listCountries(): Promise<CountryListItem[]> {
+  return networkJson<CountryListItem[]>("/api/countries");
 }
 
 export async function getCountry(slug: string): Promise<Country> {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BottomDock, ChildList, Hero, SectionTabs } from "./chrome";
+import { BottomDock, ChildList, CountryHome, Hero, SectionTabs } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
@@ -16,7 +16,9 @@ import {
   getCountry,
   getImageBlob,
   getPage,
+  listCountries,
   purchaseCountry,
+  type CountryListItem,
   requestCountrySync,
   setPageField,
   waitForCountrySync,
@@ -39,14 +41,19 @@ function navStorageKey(slug: string): string {
   return `pomogator:nav:${slug}`;
 }
 
+function readQueryCountry(): string {
+  return new URLSearchParams(location.search).get("country")?.trim() || "";
+}
+
 function readQueryPageId(): string | null {
   const value = new URLSearchParams(location.search).get("page")?.trim();
   return value || null;
 }
 
-function writeQueryPageId(slug: string, pageId: string | null): void {
+function writeQuery(slug: string | null, pageId: string | null): void {
   const params = new URLSearchParams(location.search);
-  params.set("country", slug);
+  if (slug) params.set("country", slug);
+  else params.delete("country");
   if (pageId) params.set("page", pageId);
   else params.delete("page");
   const query = params.toString();
@@ -242,7 +249,11 @@ function Paywall({
 }
 
 function App() {
-  const slug = useMemo(() => new URLSearchParams(location.search).get("country") ?? "brazil", []);
+  const [slug, setSlug] = useState(() => readQueryCountry());
+  const [homeOpen, setHomeOpen] = useState(() => !readQueryCountry());
+  const [countries, setCountries] = useState<CountryListItem[]>([]);
+  const [homeError, setHomeError] = useState("");
+  const [homeLoading, setHomeLoading] = useState(false);
   const [sessionFailure, setSessionFailure] = useState<SessionFailure | null>(() =>
     hasTelegramSession() ? null : "missing",
   );
@@ -251,7 +262,7 @@ function App() {
   const [pageId, setPageId] = useState<string>();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => Boolean(readQueryCountry()));
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -321,7 +332,7 @@ function App() {
         setPageId(id);
         setPaywall(undefined);
         setBuyError("");
-        writeQueryPageId(slug, next.id);
+        writeQuery(slug, next.id);
         if (historyMode === "reset") {
           const trail = [{ id: next.id, title: next.title }];
           setHistory(trail);
@@ -346,12 +357,12 @@ function App() {
       } catch (reason) {
         if (handleSessionFailure(reason)) return null;
         if (reason instanceof ApiError && reason.status === 402) {
-          writeQueryPageId(slug, id);
+          writeQuery(slug, id);
           setPaywall({ title: "Материал полного доступа", resumeId: id });
           return null;
         }
         if (reason instanceof Error && reason.message === "paid") {
-          writeQueryPageId(slug, id);
+          writeQuery(slug, id);
           setPaywall({ title: "Материал полного доступа", resumeId: id });
           return null;
         }
@@ -402,13 +413,30 @@ function App() {
   }, [handleSessionFailure, loadPage, revokeSession, slug]);
 
   const goHome = useCallback(() => {
-    const rootId = country?.root_page_id;
-    if (!rootId) return;
     tg?.HapticFeedback.impactOccurred("light");
     setPaywall(undefined);
     setBuyError("");
-    void loadPage(rootId, { history: "reset" });
-  }, [country?.root_page_id, loadPage]);
+    setError("");
+    setHomeOpen(true);
+    writeQuery(null, null);
+  }, []);
+
+  const openCountry = useCallback(
+    (nextSlug: string) => {
+      tg?.HapticFeedback.impactOccurred("light");
+      setHomeOpen(false);
+      setError("");
+      writeQuery(nextSlug, null);
+      if (nextSlug === slug && country && page) return;
+      setSlug(nextSlug);
+      setCountry(undefined);
+      setPage(undefined);
+      setPageId(undefined);
+      setHistory([]);
+      setLoading(true);
+    },
+    [country, page, slug],
+  );
 
   const goBack = useCallback(() => {
     if (paywall) {
@@ -416,14 +444,35 @@ function App() {
       setBuyError("");
       return;
     }
-    if (history.length <= 1) {
+    if (homeOpen) {
       tg?.close?.();
+      return;
+    }
+    if (history.length <= 1) {
+      goHome();
       return;
     }
     const previous = history.at(-2)!;
     setHistory((items) => items.slice(0, -1));
     void loadPage(previous.id, { history: "none" });
-  }, [history, loadPage, paywall]);
+  }, [goHome, history, homeOpen, loadPage, paywall]);
+
+  const loadCountryList = useCallback(async () => {
+    if (!hasTelegramSession()) {
+      revokeSession("missing");
+      return;
+    }
+    setHomeLoading(true);
+    setHomeError("");
+    try {
+      setCountries(await listCountries());
+    } catch (reason) {
+      if (handleSessionFailure(reason)) return;
+      setHomeError("Не удалось загрузить список стран");
+    } finally {
+      setHomeLoading(false);
+    }
+  }, [handleSessionFailure, revokeSession]);
 
   useEffect(() => {
     tg?.ready();
@@ -439,10 +488,19 @@ function App() {
   useEffect(() => {
     if (sessionFailure) return;
     const timer = window.setTimeout(() => {
+      if (homeOpen) {
+        void loadCountryList();
+        return;
+      }
+      if (!slug) {
+        setHomeOpen(true);
+        return;
+      }
+      if (country?.slug === slug && page) return;
       void bootstrapCountry();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [bootstrapCountry, sessionFailure]);
+  }, [bootstrapCountry, country?.slug, homeOpen, loadCountryList, page, sessionFailure, slug]);
 
   useEffect(() => {
     if (sessionFailure || !page) return;
@@ -645,13 +703,21 @@ function App() {
     return <SessionBlocked reason={sessionFailure} />;
   }
 
-  const nav = (
-    <SiteNav
-      onBack={goBack}
-      onHome={goHome}
-      backLabel={history.length > 1 || paywall ? "Назад" : "Закрыть"}
-    />
-  );
+  const backLabel = homeOpen ? "Закрыть" : "Назад";
+  const nav = <SiteNav onBack={goBack} onHome={goHome} backLabel={backLabel} />;
+
+  if (homeOpen) {
+    return (
+      <CountryHome
+        items={countries}
+        loading={homeLoading}
+        error={homeError}
+        onOpen={openCountry}
+        onRetry={() => void loadCountryList()}
+        onClose={goBack}
+      />
+    );
+  }
 
   if (paywall) {
     return (
@@ -708,7 +774,6 @@ function App() {
   const isHub =
     page.id === country?.root_page_id || page.children.length > 0 || Boolean(chrome.hero);
   const tabItems = outline.filter((item) => item.level <= 2);
-  const backLabel = history.length > 1 || paywall ? "Назад" : "Закрыть";
   const locationLabel = [country?.flag, country?.title].filter(Boolean).join(" ");
 
   if (loading) {

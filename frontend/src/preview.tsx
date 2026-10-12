@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { BottomDock, ChildList, Hero, SectionTabs } from "./chrome";
+import { BottomDock, ChildList, CountryHome, Hero, SectionTabs } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
@@ -173,7 +173,7 @@ const HERO_SRC =
   "https://images.unsplash.com/photo-1483729558449-99ef03a8a857?auto=format&fit=crop&w=1400&q=80";
 
 export function PreviewApp() {
-  const [view, setView] = useState<"hub" | "reader">("hub");
+  const [view, setView] = useState<"home" | "hub" | "reader">("home");
   const blocks = useMemo(
     () => withHeadingAnchors(view === "hub" ? HUB_BLOCKS : READER_BLOCKS),
     [view],
@@ -181,6 +181,22 @@ export function PreviewApp() {
   const chrome = splitPageChrome(blocks);
   const outline = buildOutline(chrome.rest);
   const images = chrome.hero?.image_id ? { [chrome.hero.image_id]: HERO_SRC } : {};
+
+  if (view === "home") {
+    return (
+      <CountryHome
+        items={[
+          { slug: "brazil", title: "Бразилия", flag: "🇧🇷", paid: true },
+          { slug: "argentina", title: "Аргентина", flag: "🇦🇷", paid: false },
+        ]}
+        loading={false}
+        error=""
+        onOpen={() => setView("hub")}
+        onRetry={() => undefined}
+        onClose={() => undefined}
+      />
+    );
+  }
 
   return (
     <main className={`shell ${view === "reader" ? "is-reader" : ""}`}>
@@ -236,7 +252,7 @@ export function PreviewApp() {
         onInternal={() => setView("reader")}
       />
       <BottomDock
-        onHome={() => setView("hub")}
+        onHome={() => setView("home")}
         onPdf={() => undefined}
         onRefresh={() => undefined}
         onPay={view === "hub" ? () => undefined : undefined}

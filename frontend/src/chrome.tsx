@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { Child } from "./content-api";
+import type { Child, CountryListItem } from "./content-api";
 import { Icon, pickIcon, type IconName } from "./icons";
 
 const TONES = 4;
@@ -150,6 +150,71 @@ export function ChildList({
         ))}
       </ul>
     </section>
+  );
+}
+
+export function CountryHome({
+  items,
+  loading,
+  error,
+  onOpen,
+  onRetry,
+  onClose,
+}: {
+  items: CountryListItem[];
+  loading: boolean;
+  error: string;
+  onOpen: (slug: string) => void;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <main className="shell">
+      <header className="home-head">
+        <button type="button" className="nav-btn" onClick={onClose} aria-label="Закрыть">
+          Закрыть
+        </button>
+        <p className="kicker">Помогатор</p>
+        <h1>Страны</h1>
+        <p className="lede">Выберите направление — откроется путеводитель по стране.</p>
+      </header>
+      {loading ? <p className="muted">Загружаем список…</p> : null}
+      {error ? (
+        <div className="state">
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+          <button type="button" className="btn" onClick={onRetry}>
+            Повторить
+          </button>
+        </div>
+      ) : null}
+      {!loading && !error && !items.length ? (
+        <p className="muted">Пока нет доступных стран.</p>
+      ) : null}
+      {items.length ? (
+        <section className="section-card">
+          <ul className="child-list">
+            {items.map((item, index) => (
+              <li key={item.slug}>
+                <button type="button" className="child-row" onClick={() => onOpen(item.slug)}>
+                  <span className={`icon-chip tone-${chipTone(index)}`} aria-hidden>
+                    {item.flag}
+                  </span>
+                  <span className="child-copy">
+                    <span className="child-title">{item.title}</span>
+                    <span className="child-meta">
+                      {item.paid ? "Полный доступ" : "Базовый доступ"}
+                    </span>
+                  </span>
+                  <Icon name="chevron" className="child-chevron" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </main>
   );
 }
 
