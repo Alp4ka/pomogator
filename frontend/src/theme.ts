@@ -27,9 +27,9 @@ function fallbackPalette(scheme: "light" | "dark"): Required<ThemeParams> {
     };
   }
   return {
-    bg_color: "#f3f5f8",
-    text_color: "#1c2430",
-    hint_color: "#8b94a3",
+    bg_color: "#fafafa",
+    text_color: "#1a1d24",
+    hint_color: "#5c6573",
     link_color: "#1b8f6a",
     button_color: "#1db978",
     button_text_color: "#ffffff",
@@ -64,6 +64,11 @@ export function applyTheme(): "light" | "dark" {
   root.style.setProperty("--tg-theme-button-color", theme.button_color);
   root.style.setProperty("--tg-theme-button-text-color", theme.button_text_color);
   root.style.setProperty("--tg-theme-secondary-bg-color", theme.secondary_bg_color);
+  const chrome = scheme === "light" ? "#fafafa" : theme.bg_color;
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) themeMeta.setAttribute("content", chrome);
+  tg?.setHeaderColor?.(chrome);
+  tg?.setBackgroundColor?.(chrome);
   return scheme;
 }
 

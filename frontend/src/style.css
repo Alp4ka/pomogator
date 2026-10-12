@@ -1,21 +1,22 @@
 :root {
   color-scheme: light dark;
-  --bg: var(--tg-theme-bg-color, #f3f5f8);
-  --text: var(--tg-theme-text-color, #1c2430);
-  --muted: var(--tg-theme-hint-color, #8b94a3);
+  --bg: var(--tg-theme-bg-color, #fafafa);
+  --text: var(--tg-theme-text-color, #1a1d24);
+  --muted: color-mix(in srgb, var(--tg-theme-hint-color, #5c6573) 38%, #2f3642);
   --link: var(--tg-theme-link-color, #1b8f6a);
   --btn: var(--tg-theme-button-color, #1db978);
   --btn-text: var(--tg-theme-button-text-color, #fff);
-  --surface: var(--tg-theme-secondary-bg-color, #ffffff);
-  --canvas: color-mix(in srgb, var(--muted) 10%, var(--bg));
-  --card: var(--surface);
-  --border: color-mix(in srgb, var(--muted) 22%, transparent);
-  --ink: color-mix(in srgb, var(--text) 92%, #000);
+  --surface: #ffffff;
+  --canvas: color-mix(in srgb, #ffffff 88%, var(--bg));
+  --card: #ffffff;
+  --border: color-mix(in srgb, #1a1d24 8%, transparent);
+  --ink: #14171d;
+  --wash: color-mix(in srgb, #14171d 3.5%, #ffffff);
   --callout-bg: color-mix(in srgb, var(--btn) 10%, var(--card));
   --callout-bar: #1db978;
   --radius: 22px;
   --radius-sm: 14px;
-  --shadow: 0 10px 28px color-mix(in srgb, var(--text) 8%, transparent);
+  --shadow: 0 8px 24px color-mix(in srgb, #14171d 5%, transparent);
   --pad: clamp(14px, 3vw, 28px);
   --content: min(560px, 100%);
   --prose: 15px;
@@ -48,8 +49,13 @@
 }
 
 [data-theme="dark"] {
+  --surface: var(--tg-theme-secondary-bg-color, #1e2229);
+  --muted: var(--tg-theme-hint-color, #9aa3b2);
   --canvas: color-mix(in srgb, var(--bg) 88%, #000);
   --card: color-mix(in srgb, var(--surface) 88%, var(--bg));
+  --border: color-mix(in srgb, var(--muted) 22%, transparent);
+  --ink: color-mix(in srgb, var(--text) 92%, #fff);
+  --wash: color-mix(in srgb, #fff 6%, var(--card));
   --shadow: 0 10px 28px color-mix(in srgb, #000 35%, transparent);
   --tone-1: color-mix(in srgb, #1b8f6a 22%, var(--card));
   --tone-1-ink: #6ee7b0;
@@ -329,7 +335,7 @@ button {
   font-weight: 750;
   line-height: 1.15;
   letter-spacing: -0.03em;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .hero-lede {
   margin: 0;
@@ -339,17 +345,25 @@ button {
   font-weight: 500;
   line-height: 1.4;
 }
-.hero-access {
+.hero .access.hero-access {
   position: absolute;
   top: 16px;
   right: 14px;
   z-index: 2;
   margin: 0;
-  padding: 4px 9px;
-  border-color: color-mix(in srgb, #fff 35%, transparent);
-  color: #fff;
-  background: color-mix(in srgb, #fff 16%, transparent);
+  padding: 5px 10px;
+  border: 0;
+  color: #2b3340;
+  background: color-mix(in srgb, #fff 92%, transparent);
   font-size: 11px;
+}
+.hero .access.hero-access.is-paid {
+  color: #146c52;
+  background: color-mix(in srgb, #fff 88%, #b8ead4);
+}
+.hero .access.hero-access.is-free {
+  color: #2b3340;
+  background: color-mix(in srgb, #fff 92%, transparent);
 }
 
 .reader-head {
@@ -380,7 +394,7 @@ button {
   margin: 0 0 8px;
   color: var(--muted);
   font-size: 13px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .breadcrumb .sep { opacity: 0.5; }
 .breadcrumb-step {
@@ -419,15 +433,21 @@ button {
   padding: 5px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--ink);
+  background: var(--wash);
   font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
 }
 .access.is-paid {
-  border-color: color-mix(in srgb, var(--btn) 40%, var(--border));
+  border-color: color-mix(in srgb, var(--btn) 28%, transparent);
   color: var(--tone-1-ink);
   background: var(--tone-1);
+}
+.access.is-free {
+  border-color: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--ink);
+  background: var(--wash);
 }
 
 .section-tabs {
@@ -532,7 +552,7 @@ button {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .child-meta,
 .toc-meta {
@@ -598,7 +618,7 @@ button {
   background: var(--card);
   box-shadow: var(--shadow);
 }
-.section-card .feature-card { box-shadow: none; background: color-mix(in srgb, var(--muted) 7%, var(--card)); }
+.section-card .feature-card { box-shadow: none; background: var(--wash); }
 .callout-grid.is-compact .feature-card {
   justify-items: center;
   text-align: center;
@@ -624,7 +644,7 @@ button {
   font-weight: 750;
   line-height: 1.25;
   color: var(--ink);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .callout-grid.is-compact .feature-title { font-size: 12px; color: inherit; }
 .feature-sub {
@@ -633,7 +653,7 @@ button {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .callout-grid.is-compact .feature-sub { font-size: 11px; color: inherit; opacity: 0.8; }
 
@@ -709,8 +729,8 @@ button {
   box-shadow: none;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .notion-doc > :first-child { margin-top: 0; }
 .notion-doc > :last-child { margin-bottom: 0; }
@@ -723,7 +743,7 @@ button {
   line-height: 1.3;
   letter-spacing: -0.02em;
   max-width: 100%;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   scroll-margin-top: calc(64px + env(safe-area-inset-top));
 }
 .notion-h1 { font-size: 1.45em; margin-top: 0.2em; }
@@ -742,7 +762,7 @@ button {
   padding-left: 1.25em;
   max-width: 100%;
 }
-.notion-list li { margin: 0.4em 0; padding-left: 0.1em; overflow-wrap: anywhere; }
+.notion-list li { margin: 0.4em 0; padding-left: 0.1em; overflow-wrap: break-word; }
 .notion-list.bulleted_list_item { list-style: disc; }
 .notion-list.bulleted_list_item li::marker { color: var(--muted); }
 
@@ -812,7 +832,7 @@ button {
 .notion-doc:not(.is-sectioned) .notion-callout {
   padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--muted) 8%, var(--card));
+  background: var(--wash);
 }
 .callout-icon {
   display: grid;
@@ -831,10 +851,10 @@ button {
   display: grid;
   gap: 2px;
   padding-top: 2px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .callout-title { font-weight: 750; }
-.callout-sub { color: var(--muted); font-size: 13px; }
+.callout-sub { color: var(--muted); font-size: 13px; overflow-wrap: break-word; }
 
 .notion-quote {
   margin: 0.8em 0;
@@ -842,10 +862,10 @@ button {
   max-width: 100%;
   border-left: 3px solid var(--btn);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: color-mix(in srgb, var(--muted) 8%, var(--card));
+  background: var(--wash);
   color: var(--muted);
   font-style: italic;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .notion-divider {
   margin: 1.1em 0;
@@ -859,7 +879,7 @@ button {
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--muted) 7%, var(--card));
+  background: var(--wash);
 }
 .notion-table {
   width: max-content;
@@ -903,7 +923,7 @@ button {
   max-width: 100%;
   overflow-x: auto;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--muted) 8%, var(--card));
+  background: var(--wash);
   font-size: 0.9em;
   line-height: 1.45;
 }
@@ -929,7 +949,7 @@ button {
 .notion-doc code {
   padding: 0.1em 0.3em;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--muted) 12%, var(--card));
+  background: var(--wash);
   font-size: 0.9em;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -942,7 +962,7 @@ figure { margin: 1em 0; max-width: 100%; }
   aspect-ratio: 16 / 9;
   max-width: 100%;
   border-radius: 18px;
-  background: color-mix(in srgb, var(--muted) 10%, var(--card));
+  background: var(--wash);
 }
 .image-frame img {
   width: 100%;
@@ -1037,7 +1057,7 @@ figcaption {
   font: inherit;
   line-height: 1.35;
   color: var(--text);
-  background: color-mix(in srgb, var(--muted) 10%, var(--card));
+  background: var(--wash);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-sizing: content-box;
@@ -1239,6 +1259,10 @@ figcaption {
   .page-loader,
   .page-loader-logo,
   .page-loader-mark::before { animation: none; }
+}
+
+@media (max-width: 520px) {
+  .callout-grid:not(.is-compact) { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 340px) {

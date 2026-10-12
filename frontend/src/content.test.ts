@@ -108,6 +108,25 @@ describe("callout grid grouping", () => {
     const groups = groupBlocks([{ type: "callout", rich_text: [{ text: "один" }] }]);
     expect(groups).toEqual([{ kind: "block", block: { type: "callout", rich_text: [{ text: "один" }] } }]);
   });
+
+  it("keeps long callouts full-width instead of a two-column grid", () => {
+    const groups = groupBlocks([
+      {
+        type: "callout",
+        rich_text: [
+          { text: "Кондиционер в квартире ОБЯЗАТЕЛЕН", annotations: { bold: true } },
+          { text: " В жаркие месяцы без него спать почти невозможно, особенно с маленьким ребёнком." },
+        ],
+      },
+      {
+        type: "callout",
+        rich_text: [{ text: "Храните сканы отдельно от оригиналов — в облаке и на флешке." }],
+      },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({ kind: "block" });
+    expect(groups[1]).toMatchObject({ kind: "block" });
+  });
 });
 
 describe("page chrome and sections", () => {

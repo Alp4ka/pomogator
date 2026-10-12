@@ -212,6 +212,11 @@ export function splitCalloutText(items: Rich[] | undefined): { title: string; bo
   return { title: full, body: "" };
 }
 
+function isFeatureCallout(block: Block): boolean {
+  const split = splitCalloutText(block.rich_text);
+  return split.title.length <= 28 && split.body.length <= 42;
+}
+
 export function groupBlocks(blocks: Block[]): RenderGroup[] {
   const groups: RenderGroup[] = [];
   let index = 0;
@@ -233,8 +238,20 @@ export function groupBlocks(blocks: Block[]): RenderGroup[] {
         items.push(blocks[index]!);
         index += 1;
       }
-      if (items.length >= 2) groups.push({ kind: "callout_grid", items });
-      else if (items[0]) groups.push({ kind: "block", block: items[0] });
+      let cursor = 0;
+      while (cursor < items.length) {
+        if (!isFeatureCallout(items[cursor]!)) {
+          groups.push({ kind: "block", block: items[cursor]! });
+          cursor += 1;
+          continue;
+        }
+        let end = cursor + 1;
+        while (end < items.length && isFeatureCallout(items[end]!)) end += 1;
+        const run = items.slice(cursor, end);
+        if (run.length >= 2) groups.push({ kind: "callout_grid", items: run });
+        else if (run[0]) groups.push({ kind: "block", block: run[0] });
+        cursor = end;
+      }
       continue;
     }
     groups.push({ kind: "block", block });

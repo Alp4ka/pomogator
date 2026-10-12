@@ -17,6 +17,8 @@ interface TelegramWebApp {
   ready(): void;
   expand(): void;
   close(): void;
+  setHeaderColor?(color: string): void;
+  setBackgroundColor?(color: string): void;
   /** Bot API 7.7+: stop content swipes from minimizing the Mini App. */
   disableVerticalSwipes?(): void;
   enableVerticalSwipes?(): void;
