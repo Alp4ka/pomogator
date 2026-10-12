@@ -158,6 +158,15 @@ const READER_BLOCKS: Block[] = [
   },
   {
     type: "bulleted_list_item",
+    rich_text: [
+      { text: "Кондиционер в квартире ОБЯЗАТЕЛЕН", annotations: { bold: true } },
+      {
+        text: " В жаркие месяцы без него спать почти невозможно, особенно с маленьким ребёнком. Ищите объявления с split-системой и уточняйте, входит ли электричество в аренду.",
+      },
+    ],
+  },
+  {
+    type: "bulleted_list_item",
     rich_text: [{ text: "Загранпаспорт и нотариальные переводы" }],
   },
   {
@@ -207,7 +216,7 @@ export function PreviewApp() {
           onRetry={() => undefined}
           onClose={() => undefined}
         />
-        {showLoader ? <PageLoader /> : null}
+        {showLoader ? <PageLoader delayMs={0} /> : null}
       </>
     );
   }
@@ -223,7 +232,7 @@ export function PreviewApp() {
           placeholder="🇧🇷"
           accessLabel="Полный доступ"
           paid
-          onBack={() => undefined}
+          onBack={() => setView("home")}
           backLabel="Назад"
         />
       ) : (
@@ -274,7 +283,7 @@ export function PreviewApp() {
         syncBusy={false}
         showPay={view === "hub"}
       />
-      {showLoader ? <PageLoader /> : null}
+      {showLoader ? <PageLoader delayMs={0} /> : null}
     </main>
   );
 }

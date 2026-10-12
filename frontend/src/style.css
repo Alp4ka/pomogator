@@ -285,7 +285,7 @@ button {
   position: absolute;
   top: 12px;
   left: 12px;
-  z-index: 2;
+  z-index: 3;
   display: grid;
   place-items: center;
   width: 40px;
@@ -302,7 +302,7 @@ button {
   position: absolute;
   top: 16px;
   left: 58px;
-  z-index: 2;
+  z-index: 3;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -320,13 +320,15 @@ button {
 .hero-location span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hero-copy {
   position: relative;
-  z-index: 2;
+  z-index: 1;
   display: grid;
   gap: 6px;
   justify-items: start;
   min-height: 210px;
   padding: 88px 18px 20px;
+  pointer-events: none;
 }
+.hero-copy > * { pointer-events: auto; }
 .hero.has-image .hero-copy { min-height: 230px; }
 .hero-copy h1 {
   margin: 0;
@@ -349,7 +351,7 @@ button {
   position: absolute;
   top: 16px;
   right: 14px;
-  z-index: 2;
+  z-index: 3;
   margin: 0;
   padding: 5px 10px;
   border: 0;
@@ -516,15 +518,17 @@ button {
   letter-spacing: -0.02em;
 }
 
+.child-section {
+  margin: 0 0 12px;
+  min-width: 0;
+}
 .child-list,
 .toc-list {
   list-style: none;
+  display: grid;
+  gap: 8px;
   margin: 0;
   padding: 0;
-}
-.child-list li + li,
-.toc-list li + li {
-  border-top: 1px solid var(--border);
 }
 .child-row,
 .toc-item {
@@ -534,9 +538,13 @@ button {
   align-items: center;
   width: 100%;
   min-height: 64px;
-  padding: 10px 0;
+  padding: 12px 16px;
+  overflow: hidden;
+  isolation: isolate;
   border: 0;
-  background: transparent;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -763,6 +771,17 @@ button {
   max-width: 100%;
 }
 .notion-list li { margin: 0.4em 0; padding-left: 0.1em; overflow-wrap: break-word; }
+.notion-list-copy,
+.notion-list-text {
+  display: block;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.notion-list-copy > strong:first-child,
+.notion-list li > strong:first-child {
+  display: block;
+}
 .notion-list.bulleted_list_item { list-style: disc; }
 .notion-list.bulleted_list_item li::marker { color: var(--muted); }
 
@@ -772,18 +791,19 @@ button {
   counter-reset: plan;
 }
 .notion-list.numbered_list_item > li {
+  position: relative;
   counter-increment: plan;
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  column-gap: 12px;
-  align-items: start;
+  display: block;
   margin: 0;
-  padding: 12px 0;
+  padding: 12px 0 12px 48px;
   border-bottom: 1px solid var(--border);
 }
 .notion-list.numbered_list_item > li:last-child { border-bottom: 0; padding-bottom: 2px; }
 .notion-list.numbered_list_item > li::before {
   content: counter(plan);
+  position: absolute;
+  top: 12px;
+  left: 0;
   display: grid;
   place-items: center;
   width: 36px;
@@ -800,20 +820,20 @@ button {
   padding: 0;
 }
 .section-card .notion-list.bulleted_list_item > li {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  column-gap: 12px;
-  align-items: start;
+  position: relative;
+  display: block;
   margin: 0;
-  padding: 12px 0;
+  padding: 12px 0 12px 22px;
   border-bottom: 1px solid var(--border);
 }
 .section-card .notion-list.bulleted_list_item > li:last-child { border-bottom: 0; }
 .section-card .notion-list.bulleted_list_item > li::before {
   content: "";
+  position: absolute;
+  top: 1.35em;
+  left: 0;
   width: 8px;
   height: 8px;
-  margin-top: 7px;
   border-radius: 999px;
   background: var(--btn);
 }
@@ -1243,10 +1263,13 @@ figcaption {
 @media (hover: hover) {
   .nav-btn:hover,
   .btn-secondary:hover,
-  .child-row:hover,
-  .toc-item:hover,
   .section-tab:hover:not(.is-active) {
     background: color-mix(in srgb, var(--muted) 10%, var(--card));
+    color: var(--text);
+  }
+  .child-row:hover,
+  .toc-item:hover {
+    background: var(--wash);
     color: var(--text);
   }
   .dock-item:hover { color: var(--text); }

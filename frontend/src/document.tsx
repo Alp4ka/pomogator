@@ -679,8 +679,10 @@ function renderGroup(
           const onlyVideo = isYouTubeOnlyRich(item.rich_text);
           return (
             <li key={itemIndex} id={blockDomId(item)}>
-              {onlyVideo && ids.length ? null : rich(item)}
-              <YouTubeStack ids={ids} />
+              <div className="notion-list-copy">
+                {onlyVideo && ids.length ? null : <span className="notion-list-text">{rich(item)}</span>}
+                <YouTubeStack ids={ids} />
+              </div>
             </li>
           );
         })}

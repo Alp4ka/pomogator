@@ -232,9 +232,11 @@ function Paywall({
 function App() {
   const [slug, setSlug] = useState(() => readQueryCountry());
   const [homeOpen, setHomeOpen] = useState(() => !readQueryCountry());
+  const homeOpenRef = useRef(homeOpen);
+  homeOpenRef.current = homeOpen;
   const [countries, setCountries] = useState<CountryListItem[]>([]);
   const [homeError, setHomeError] = useState("");
-  const [homeLoading, setHomeLoading] = useState(false);
+  const [homeLoading, setHomeLoading] = useState(() => !readQueryCountry());
   const [sessionFailure, setSessionFailure] = useState<SessionFailure | null>(() =>
     hasTelegramSession() ? null : "missing",
   );
@@ -313,7 +315,7 @@ function App() {
         setPageId(id);
         setPaywall(undefined);
         setBuyError("");
-        writeQuery(slug, next.id);
+        if (!homeOpenRef.current) writeQuery(slug, next.id);
         if (historyMode === "reset") {
           const trail = [{ id: next.id, title: next.title }];
           setHistory(trail);
@@ -338,12 +340,12 @@ function App() {
       } catch (reason) {
         if (handleSessionFailure(reason)) return null;
         if (reason instanceof ApiError && reason.status === 402) {
-          writeQuery(slug, id);
+          if (!homeOpenRef.current) writeQuery(slug, id);
           setPaywall({ title: "Материал полного доступа", resumeId: id });
           return null;
         }
         if (reason instanceof Error && reason.message === "paid") {
-          writeQuery(slug, id);
+          if (!homeOpenRef.current) writeQuery(slug, id);
           setPaywall({ title: "Материал полного доступа", resumeId: id });
           return null;
         }
@@ -429,14 +431,16 @@ function App() {
       tg?.close?.();
       return;
     }
-    if (history.length <= 1) {
+    const atCountryRoot =
+      Boolean(country?.root_page_id) && pageId === country?.root_page_id;
+    if (atCountryRoot || history.length <= 1) {
       goHome();
       return;
     }
     const previous = history.at(-2)!;
     setHistory((items) => items.slice(0, -1));
     void loadPage(previous.id, { history: "none" });
-  }, [goHome, history, homeOpen, loadPage, paywall]);
+  }, [country?.root_page_id, goHome, history, homeOpen, loadPage, pageId, paywall]);
 
   const loadCountryList = useCallback(async () => {
     if (!hasTelegramSession()) {
@@ -686,17 +690,15 @@ function App() {
 
   const backLabel = homeOpen ? "Закрыть" : "Назад";
   const nav = <SiteNav onBack={goBack} onHome={goHome} backLabel={backLabel} />;
-  const loader =
-    loading || (homeOpen && homeLoading) ? (
-      <PageLoader label={homeOpen ? "Загружаем список…" : "Загружаем…"} />
-    ) : null;
+  const homeBusy = homeOpen && homeLoading && countries.length === 0;
+  const loader = loading || homeBusy ? <PageLoader /> : null;
 
   if (homeOpen) {
     return (
       <>
         <CountryHome
           items={countries}
-          loading={false}
+          loading={homeLoading}
           error={homeError}
           onOpen={openCountry}
           onRetry={() => void loadCountryList()}

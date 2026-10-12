@@ -125,7 +125,7 @@ export function ChildList({
 }) {
   if (!items.length) return null;
   return (
-    <section className="section-card child-section">
+    <section className="child-section">
       {title ? <h2 className="section-title">{title}</h2> : null}
       <ul className="child-list">
         {items.map((child, index) => (
@@ -153,7 +153,29 @@ export function ChildList({
   );
 }
 
-export function PageLoader({ label = "Загружаем…" }: { label?: string }) {
+const LOADER_DELAY_MS = 300;
+
+export function PageLoader({
+  label = "Загружаем…",
+  delayMs = LOADER_DELAY_MS,
+}: {
+  label?: string;
+  delayMs?: number;
+}) {
+  const [visible, setVisible] = useState(delayMs <= 0);
+
+  useEffect(() => {
+    if (delayMs <= 0) {
+      setVisible(true);
+      return;
+    }
+    setVisible(false);
+    const timer = window.setTimeout(() => setVisible(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs]);
+
+  if (!visible) return null;
+
   return (
     <div className="page-loader" role="status" aria-live="polite" aria-busy="true">
       <div className="page-loader-mark" aria-hidden="true">
@@ -189,7 +211,6 @@ export function CountryHome({
         <h1>Страны</h1>
         <p className="lede">Выберите направление — откроется путеводитель по стране.</p>
       </header>
-      {loading ? <p className="muted">Загружаем список…</p> : null}
       {error ? (
         <div className="state">
           <p className="form-error" role="alert">
@@ -204,7 +225,7 @@ export function CountryHome({
         <p className="muted">Пока нет доступных стран.</p>
       ) : null}
       {items.length ? (
-        <section className="section-card">
+        <section className="child-section">
           <ul className="child-list">
             {items.map((item, index) => (
               <li key={item.slug}>
