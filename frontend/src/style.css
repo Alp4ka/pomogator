@@ -220,7 +220,6 @@ button {
   background: color-mix(in srgb, var(--muted) 14%, var(--card));
 }
 
-.offline-banner,
 .sync-banner {
   margin: 0 0 12px;
   padding: 12px 14px;

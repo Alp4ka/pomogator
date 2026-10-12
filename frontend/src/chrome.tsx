@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { Child } from "./offline/content-api";
+import type { Child } from "./content-api";
 import { Icon, pickIcon, type IconName } from "./icons";
 
 const TONES = 4;

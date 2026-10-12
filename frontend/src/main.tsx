@@ -12,19 +12,17 @@ import { Icon } from "./icons";
 import {
   ApiError,
   downloadPagePdf,
-  flushFieldQueue,
+  dropLegacyOffline,
   getCountry,
   getImageBlob,
   getPage,
-  prefetchCountryTree,
   purchaseCountry,
-  registerOfflineShellWorker,
   requestCountrySync,
   setPageField,
   waitForCountrySync,
   type Country,
   type Page,
-} from "./offline/content-api";
+} from "./content-api";
 import {
   classifySessionError,
   clearBoundSession,
@@ -96,7 +94,7 @@ function restoreHistoryForPage(
 }
 
 applyTheme();
-registerOfflineShellWorker();
+dropLegacyOffline();
 
 const tg = window.Telegram?.WebApp;
 
@@ -266,7 +264,6 @@ function App() {
   const [paywall, setPaywall] = useState<{ title: string; resumeId?: string }>();
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [fields, setFields] = useState<Record<string, string>>({});
-  const [offlineMode, setOfflineMode] = useState(false);
   const fieldTimers = useRef<Map<string, number>>(new Map());
   const savedFields = useRef<Record<string, string>>({});
   const pageIdRef = useRef(page?.id);
@@ -317,8 +314,7 @@ function App() {
       setLoading(true);
       setError("");
       try {
-        const { data: next, meta } = await getPage(id);
-        setOfflineMode(meta.fromCache);
+        const next = await getPage(id);
         setPage(next);
         setFields(next.fields ?? {});
         savedFields.current = { ...(next.fields ?? {}) };
@@ -359,11 +355,7 @@ function App() {
           setPaywall({ title: "Материал полного доступа", resumeId: id });
           return null;
         }
-        setError(
-          !navigator.onLine
-            ? "Нет сети и страница ещё не сохранена офлайн. Откройте миниапп онлайн один раз."
-            : "Не удалось загрузить статью",
-        );
+        setError("Не удалось загрузить статью");
         return null;
       } finally {
         setLoading(false);
@@ -380,9 +372,7 @@ function App() {
     setLoading(true);
     setError("");
     try {
-      void flushFieldQueue();
-      const { data: value, meta } = await getCountry(slug);
-      setOfflineMode(meta.fromCache);
+      const value = await getCountry(slug);
       setCountry(value);
       if (!value.root_page_id) {
         setError("Материалы ещё индексируются");
@@ -400,18 +390,12 @@ function App() {
         setHistory(trail);
         writeStoredNav(slug, loaded.id, trail);
       } else if (targetId !== value.root_page_id) {
-        // Deep link failed (offline miss / deleted) — fall back to country root.
         const root = await loadPage(value.root_page_id, { history: "reset" });
         if (!root) setError("Не удалось открыть страну");
       }
-      if (!meta.fromCache) void prefetchCountryTree(value.root_page_id);
     } catch (reason) {
       if (handleSessionFailure(reason)) return;
-      setError(
-        !navigator.onLine
-          ? "Нет сети и страна ещё не сохранена офлайн. Откройте миниапп онлайн один раз."
-          : "Не удалось открыть страну",
-      );
+      setError("Не удалось открыть страну");
     } finally {
       setLoading(false);
     }
@@ -446,14 +430,8 @@ function App() {
     tg?.expand();
     // Tables/long docs: vertical pan must not collapse the Mini App.
     tg?.disableVerticalSwipes?.();
-    const onOnline = () => {
-      setOfflineMode(false);
-      void flushFieldQueue();
-    };
-    window.addEventListener("online", onOnline);
     const unbindTheme = bindThemeListeners();
     return () => {
-      window.removeEventListener("online", onOnline);
       unbindTheme();
     };
   }, []);
@@ -473,7 +451,7 @@ function App() {
     let active = true;
     Promise.all(
       ids.map(async (id) => {
-        const { blob } = await getImageBlob(id);
+        const blob = await getImageBlob(id);
         const objectUrl = URL.createObjectURL(blob);
         createdUrls.push(objectUrl);
         return [id, objectUrl] as const;
@@ -512,11 +490,7 @@ function App() {
       if (resume) await loadPage(resume, { history: "none" });
     } catch (reason) {
       if (handleSessionFailure(reason)) return;
-      setBuyError(
-        !navigator.onLine
-          ? "Оплата недоступна офлайн. Подключите интернет."
-          : "Не удалось выдать тестовый доступ. Попробуйте ещё раз.",
-      );
+      setBuyError("Не удалось выдать тестовый доступ. Попробуйте ещё раз.");
     } finally {
       setBuying(false);
     }
@@ -547,11 +521,9 @@ function App() {
         return;
       }
       setExportError(
-        !navigator.onLine
-          ? "PDF недоступен офлайн. Подключите интернет."
-          : reason instanceof ApiError && reason.message === "download denied"
-            ? "Скачивание отклонено. Разрешите сохранение файла в Telegram."
-            : "Не удалось сохранить PDF. Попробуйте ещё раз.",
+        reason instanceof ApiError && reason.message === "download denied"
+          ? "Скачивание отклонено. Разрешите сохранение файла в Telegram."
+          : "Не удалось сохранить PDF. Попробуйте ещё раз.",
       );
     } finally {
       setExporting(false);
@@ -559,10 +531,6 @@ function App() {
   }
 
   async function refreshFromNotion() {
-    if (!navigator.onLine) {
-      setSyncError("Нужен интернет, чтобы обновить материалы.");
-      return;
-    }
     setSyncing(true);
     setSyncProgress(4);
     setSyncPhase("Готовим обновление…");
@@ -570,7 +538,6 @@ function App() {
     setSyncNotice("");
     const resumePageId = pageIdRef.current;
     try {
-      await flushFieldQueue();
       setSyncProgress(12);
       setSyncPhase("Отправляем запрос на обновление…");
       const baseline = country?.content_version ?? 0;
@@ -601,13 +568,11 @@ function App() {
       }
       setSyncProgress(92);
       setSyncPhase("Обновляем страницу…");
-      const { data: nextCountry } = await getCountry(slug);
+      const nextCountry = await getCountry(slug);
       setCountry(nextCountry);
-      setOfflineMode(false);
       const targetId = resumePageId || nextCountry.root_page_id;
       if (targetId) {
         await loadPage(targetId, { history: "none" });
-        void prefetchCountryTree(nextCountry.root_page_id ?? targetId);
       }
       setSyncProgress(100);
       setSyncPhase("Готово");
@@ -633,11 +598,10 @@ function App() {
     if (!pageId) return;
     if (savedFields.current[fieldKey] === value) return;
     try {
-      const { fields: next, meta } = await setPageField(pageId, fieldKey, value);
+      const next = await setPageField(pageId, fieldKey, value);
       if (pageIdRef.current !== pageId) return;
       setFields(next);
       savedFields.current = { ...savedFields.current, ...next };
-      if (meta.fromCache) setOfflineMode(true);
     } catch (reason) {
       if (handleSessionFailure(reason)) return;
     }
@@ -758,12 +722,6 @@ function App() {
 
   const notices = (
     <>
-      {offlineMode ? (
-        <p className="offline-banner" role="status">
-          Офлайн-режим: показана последняя сохранённая версия. Навигация по уже открытым разделам
-          работает.
-        </p>
-      ) : null}
       {syncing ? (
         <div className="sync-banner sync-progress" role="status" aria-live="polite">
           <div className="sync-progress-head">
