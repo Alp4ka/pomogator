@@ -1,6 +1,7 @@
 import io
 from uuid import uuid4
 
+from PIL import Image
 from pomogator.domain.pdf_trace import (
     derive_trace_secret,
     disguise_token,
@@ -10,6 +11,7 @@ from pomogator.domain.pdf_trace import (
 )
 from pomogator.infrastructure.pdf.render import (
     _cell_text,
+    _color_emoji_image,
     _plain,
     _register_fonts,
     _wrap,
@@ -202,6 +204,31 @@ def test_render_pdf_table_cells_are_readable_text():
     assert b"DejaVu" in pdf
 
 
+def test_color_emoji_uses_bundled_noto_color_glyphs():
+    house = _color_emoji_image("🏠")
+    flag = _color_emoji_image("🇧🇷")
+    assert house is not None
+    assert flag is not None
+    assert house[1] >= 32 and house[2] >= 32
+    assert flag[1] >= 32 and flag[2] >= 32
+    assert _color_emoji_image("Ж") is None
+    assert _color_emoji_image("☐") is None
+    image = Image.open(io.BytesIO(flag[0])).convert("RGBA")
+    greens = 0
+    for x in range(0, image.width, 3):
+        for y in range(0, image.height, 3):
+            pixel = image.getpixel((x, y))
+            if (
+                isinstance(pixel, tuple)
+                and len(pixel) == 4
+                and pixel[3] > 200
+                and pixel[1] > pixel[0] + 25
+                and pixel[1] > pixel[2] + 25
+            ):
+                greens += 1
+    assert greens > 10, "Brazil flag must keep the green field, not ISO letter pills"
+
+
 def test_render_pdf_keeps_emoji_and_document_blocks():
     export_id = uuid4()
     pdf = render_page_pdf(
@@ -227,4 +254,7 @@ def test_render_pdf_keeps_emoji_and_document_blocks():
     )
     assert pdf.startswith(b"%PDF")
     assert b"DejaVu" in pdf
-    assert b"NotoEmoji" in pdf or b"GuideEmoji" in pdf or b"Emoji" in pdf
+    assert b"/Image" in pdf
+    assert _color_emoji_image("🏠") is not None
+    assert _color_emoji_image("🇧🇷") is not None
+    assert _color_emoji_image("Ж") is None

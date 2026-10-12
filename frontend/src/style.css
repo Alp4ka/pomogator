@@ -107,7 +107,7 @@ button {
   min-width: 0;
   margin: 0 auto;
   padding:
-    calc(10px + env(safe-area-inset-top, 0px) + var(--tg-chrome-top))
+    calc((10px + env(safe-area-inset-top, 0px) + var(--tg-chrome-top)) / 2)
     var(--pad)
     calc(var(--dock-h) + 20px + env(safe-area-inset-bottom));
   overflow-x: hidden;
@@ -312,12 +312,12 @@ button {
   padding: 6px 10px;
   border-radius: 999px;
   background: color-mix(in srgb, #fff 88%, transparent);
-  color: var(--ink);
+  color: #14171d;
   font-size: 12px;
   font-weight: 650;
   overflow: hidden;
 }
-.hero-location svg { width: 14px; height: 14px; color: var(--tone-1-ink); flex: 0 0 auto; }
+.hero-location svg { width: 14px; height: 14px; color: #1b8f6a; flex: 0 0 auto; }
 .hero-location span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hero-copy {
   position: relative;
@@ -1308,7 +1308,7 @@ figcaption {
 
 @media (min-width: 768px) {
   :root { --prose: 16px; --content: min(640px, 100%); }
-  .shell { padding-top: calc(16px + env(safe-area-inset-top, 0px) + var(--tg-chrome-top)); }
+  .shell { padding-top: calc((16px + env(safe-area-inset-top, 0px) + var(--tg-chrome-top)) / 2); }
   .hero.has-image { min-height: 280px; }
   .hero.has-image .hero-copy { min-height: 280px; }
   .callout-grid { gap: 12px; }

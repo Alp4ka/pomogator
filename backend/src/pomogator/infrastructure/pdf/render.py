@@ -9,9 +9,13 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from fontTools.ttLib import TTFont as ColorTTFont
+from fontTools.ttLib import TTLibError
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.colors import Color, white
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -37,10 +41,16 @@ _EMOJI_CANDIDATES = (
     _FONTS_DIR / "NotoEmoji-Regular.ttf",
     Path("/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf"),
 )
+_COLOR_EMOJI_CANDIDATES = (
+    _FONTS_DIR / "NotoColorEmoji.ttf",
+    Path("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"),
+)
 _SYMBOL_CANDIDATES = (
     _FONTS_DIR / "NotoSansSymbols2-Regular.ttf",
     Path("/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf"),
 )
+_COLOR_EMOJI_SIZES = (109, 128, 96, 64)
+_TEXT_ONLY_CLUSTERS = frozenset({"☑", "☐", "•", "·"})
 
 _CHECK_ON = "☑"
 _CHECK_OFF = "☐"
@@ -510,6 +520,184 @@ def _flag_iso(cluster: str) -> str | None:
     return "".join(chr(ord(char) - 0x1F1E6 + 65) for char in cluster)
 
 
+def _is_emoji_code(code: int) -> bool:
+    return (
+        0x1F000 <= code <= 0x1FAFF
+        or 0x1F1E6 <= code <= 0x1F1FF
+        or 0x2300 <= code <= 0x23FF
+        or 0x2600 <= code <= 0x27BF
+        or 0x2B50 <= code <= 0x2B55
+        or 0x25A0 <= code <= 0x25FF
+        or code in {0x00A9, 0x00AE, 0x203C, 0x2049, 0x2122, 0x2139, 0x3030, 0x303D, 0x3297, 0x3299}
+    )
+
+
+def _is_emoji_cluster(cluster: str) -> bool:
+    if not cluster or cluster in _TEXT_ONLY_CLUSTERS:
+        return False
+    if _flag_iso(cluster):
+        return True
+    return any(_is_emoji_code(ord(char)) for char in cluster if char not in _VS and char != _ZWJ)
+
+
+@lru_cache(maxsize=1)
+def _color_emoji_ttfont() -> ColorTTFont | None:
+    for path in _COLOR_EMOJI_CANDIDATES:
+        if not path.is_file():
+            continue
+        try:
+            return ColorTTFont(str(path))
+        except (OSError, TTLibError):
+            continue
+    return None
+
+
+@lru_cache(maxsize=1)
+def _color_emoji_font() -> ImageFont.FreeTypeFont | None:
+    for path in _COLOR_EMOJI_CANDIDATES:
+        if not path.is_file():
+            continue
+        for size in _COLOR_EMOJI_SIZES:
+            try:
+                return ImageFont.truetype(str(path), size=size)
+            except OSError:
+                continue
+    return None
+
+
+def _cmap_glyph(font: ColorTTFont, char: str) -> str | None:
+    cmap = font.getBestCmap() or {}
+    name = cmap.get(ord(char))
+    return str(name) if name else None
+
+
+def _cluster_glyph_names(cluster: str) -> list[str] | None:
+    font = _color_emoji_ttfont()
+    if font is None:
+        return None
+    names: list[str] = []
+    for char in cluster:
+        if char in _VS:
+            continue
+        if char == _ZWJ:
+            names.append("uni200D")
+            continue
+        name = _cmap_glyph(font, char)
+        if name is None:
+            return None
+        names.append(name)
+    return names or None
+
+
+def _lookup_ligature(names: list[str]) -> str | None:
+    font = _color_emoji_ttfont()
+    if font is None or "GSUB" not in font or len(names) < 2:
+        return None
+    for lookup in font["GSUB"].table.LookupList.Lookup:
+        if lookup.LookupType != 4:
+            continue
+        for table in lookup.SubTable:
+            ligatures = getattr(table, "ligatures", None)
+            if not isinstance(ligatures, dict):
+                continue
+            candidates = ligatures.get(names[0])
+            if not candidates:
+                continue
+            rest = names[1:]
+            for ligature in candidates:
+                if list(ligature.Component) == rest:
+                    return str(ligature.LigGlyph)
+    return None
+
+
+def _cbdt_png(glyph_name: str) -> bytes | None:
+    font = _color_emoji_ttfont()
+    if font is None or "CBDT" not in font:
+        return None
+    for strike in font["CBDT"].strikeData:
+        glyph = strike.get(glyph_name)
+        if glyph is None:
+            continue
+        data = getattr(glyph, "imageData", None)
+        if isinstance(data, bytes) and data.startswith(b"\x89PNG"):
+            return data
+    return None
+
+
+def _rasterize_color_emoji(cluster: str) -> bytes | None:
+    font = _color_emoji_font()
+    if font is None:
+        return None
+    canvas = Image.new("RGBA", (320, 200), (0, 0, 0, 0))
+    ImageDraw.Draw(canvas).text((16, 16), cluster, font=font, embedded_color=True)
+    box = canvas.getbbox()
+    if box is None:
+        return None
+    cropped = canvas.crop(box)
+    if cropped.width < 8 or cropped.height < 8:
+        return None
+    buffer = io.BytesIO()
+    cropped.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+@lru_cache(maxsize=512)
+def _color_emoji_image(cluster: str) -> tuple[bytes, int, int] | None:
+    if not _is_emoji_cluster(cluster):
+        return None
+    names = _cluster_glyph_names(cluster)
+    glyph: str | None = None
+    if names:
+        glyph = names[0] if len(names) == 1 else _lookup_ligature(names)
+    png = _cbdt_png(glyph) if glyph else None
+    if png is None:
+        png = _rasterize_color_emoji(cluster)
+    if png is None:
+        return None
+    image = Image.open(io.BytesIO(png)).convert("RGBA")
+    box = image.getbbox()
+    if box is None:
+        return None
+    cropped = image.crop(box)
+    if cropped.width < 8 or cropped.height < 8:
+        return None
+    buffer = io.BytesIO()
+    cropped.save(buffer, format="PNG")
+    return buffer.getvalue(), cropped.width, cropped.height
+
+
+def _color_emoji_box(cluster: str, size: float) -> tuple[float, float] | None:
+    image = _color_emoji_image(cluster)
+    if image is None:
+        return None
+    _png, pixel_w, pixel_h = image
+    height = size * 1.12
+    width = height * (pixel_w / pixel_h)
+    return width, height
+
+
+def _draw_color_emoji(
+    pdf: canvas.Canvas, x: float, y: float, cluster: str, size: float
+) -> float:
+    image = _color_emoji_image(cluster)
+    box = _color_emoji_box(cluster, size)
+    if image is None or box is None:
+        return 0.0
+    png, _pixel_w, _pixel_h = image
+    width, height = box
+    pdf.drawImage(
+        ImageReader(io.BytesIO(png)),
+        x,
+        y - size * 0.18,
+        width=width,
+        height=height,
+        mask="auto",
+        preserveAspectRatio=True,
+        anchor="sw",
+    )
+    return width + size * 0.08
+
+
 def _flag_badge_width(size: float) -> float:
     return size * 1.7 + 3
 
@@ -559,6 +747,10 @@ def _string_width(
 ) -> float:
     total = 0.0
     for cluster in _clusters(text):
+        emoji = _color_emoji_box(cluster, size)
+        if emoji is not None:
+            total += emoji[0] + size * 0.08
+            continue
         if _flag_iso(cluster):
             total += _flag_badge_width(size)
             continue
@@ -607,6 +799,10 @@ def _draw_mixed_string(
     pdf.setFillColor(color)
     cursor = x
     for cluster in _clusters(text):
+        emoji_width = _draw_color_emoji(pdf, cursor, y, cluster, size)
+        if emoji_width:
+            cursor += emoji_width
+            continue
         code = _flag_iso(cluster)
         if code:
             cursor += _draw_flag_badge(pdf, cursor, y, code, size, font, extras)
