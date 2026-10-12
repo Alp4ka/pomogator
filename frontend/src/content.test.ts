@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOutline, groupBlocks, navDomId, withHeadingAnchors, type Block } from "./document";
+import {
+  buildOutline,
+  groupBlocks,
+  navDomId,
+  splitCalloutText,
+  splitPageChrome,
+  splitSections,
+  withHeadingAnchors,
+  type Block,
+} from "./document";
 
 describe("content routing", () => {
   it("keeps external and internal links distinct", () => {
@@ -79,5 +88,58 @@ describe("list grouping without checklist special-case", () => {
     expect(groups[1]).toMatchObject({ kind: "list", listType: "bulleted_list_item" });
     if (groups[1]?.kind === "list") expect(groups[1].items).toHaveLength(2);
     expect(groups[2]).toMatchObject({ kind: "block" });
+  });
+});
+
+describe("callout grid grouping", () => {
+  it("wraps two or more consecutive callouts", () => {
+    const groups = groupBlocks([
+      { type: "heading_2", rich_text: [{ text: "Почему" }] },
+      { type: "callout", icon: "🏠", rich_text: [{ text: "жизнь" }] },
+      { type: "callout", icon: "☀", rich_text: [{ text: "климат" }] },
+      { type: "paragraph", rich_text: [{ text: "дальше" }] },
+    ]);
+    expect(groups).toHaveLength(3);
+    expect(groups[1]).toMatchObject({ kind: "callout_grid" });
+    if (groups[1]?.kind === "callout_grid") expect(groups[1].items).toHaveLength(2);
+  });
+
+  it("keeps a single callout as an ordinary block", () => {
+    const groups = groupBlocks([{ type: "callout", rich_text: [{ text: "один" }] }]);
+    expect(groups).toEqual([{ kind: "block", block: { type: "callout", rich_text: [{ text: "один" }] } }]);
+  });
+});
+
+describe("page chrome and sections", () => {
+  it("lifts a leading image and short lede", () => {
+    const chrome = splitPageChrome([
+      { type: "image", image_id: "cover" },
+      { type: "paragraph", rich_text: [{ text: "Солнечный город на востоке Бразилии" }] },
+      { type: "heading_2", rich_text: [{ text: "Климат" }] },
+    ]);
+    expect(chrome.hero?.image_id).toBe("cover");
+    expect(chrome.lede).toMatch(/Солнечный/);
+    expect(chrome.rest).toHaveLength(1);
+  });
+
+  it("splits heading_2 groups into sections", () => {
+    const sections = splitSections(
+      groupBlocks([
+        { type: "paragraph", rich_text: [{ text: "intro" }] },
+        { type: "heading_2", rich_text: [{ text: "План" }] },
+        { type: "numbered_list_item", rich_text: [{ text: "шаг" }] },
+      ]),
+    );
+    expect(sections).toHaveLength(2);
+    expect(sections[1]?.heading?.type).toBe("heading_2");
+  });
+
+  it("splits bold lead-in from callout body", () => {
+    expect(
+      splitCalloutText([
+        { text: "больницы", annotations: { bold: true } },
+        { text: " современная медицина" },
+      ]),
+    ).toEqual({ title: "больницы", body: "современная медицина" });
   });
 });

@@ -51,7 +51,20 @@ export type OutlineItem = { id: string; level: number; title: string };
 
 export type RenderGroup =
   | { kind: "list"; listType: "bulleted_list_item" | "numbered_list_item"; items: Block[] }
+  | { kind: "callout_grid"; items: Block[] }
   | { kind: "block"; block: Block };
+
+export type PageChrome = {
+  hero?: Block;
+  lede?: string;
+  rest: Block[];
+};
+
+export type DocSection = {
+  id?: string;
+  heading?: Block;
+  groups: RenderGroup[];
+};
 
 export function plainRichText(items: Rich[] | undefined): string {
   return (items ?? []).map((item) => item.text).join("").trim();
@@ -133,6 +146,72 @@ function wrapLink(
   return node;
 }
 
+export function splitPageChrome(blocks: Block[]): PageChrome {
+  const rest = [...blocks];
+  let hero: Block | undefined;
+  let lede: string | undefined;
+  const firstImage = rest.findIndex((block) => block.type === "image" && block.image_id);
+  if (firstImage >= 0 && firstImage <= 2) {
+    hero = rest.splice(firstImage, 1)[0];
+  }
+  const firstParagraph = rest.findIndex(
+    (block) => block.type === "paragraph" && plainRichText(block.rich_text),
+  );
+  const firstHeading = rest.findIndex((block) => block.type.startsWith("heading_"));
+  if (
+    firstParagraph >= 0 &&
+    firstParagraph <= 1 &&
+    (firstHeading < 0 || firstParagraph < firstHeading)
+  ) {
+    const text = plainRichText(rest[firstParagraph]?.rich_text);
+    if (text && text.length <= 180) {
+      lede = text;
+      rest.splice(firstParagraph, 1);
+    }
+  }
+  return { hero, lede, rest };
+}
+
+export function splitSections(groups: RenderGroup[]): DocSection[] {
+  const sections: DocSection[] = [];
+  let current: DocSection = { groups: [] };
+  const flush = () => {
+    if (current.heading || current.groups.length) sections.push(current);
+    current = { groups: [] };
+  };
+  for (const group of groups) {
+    if (group.kind === "block" && group.block.type.startsWith("heading_")) {
+      const level = Number(group.block.type.at(-1) ?? "2");
+      if (level <= 2 && (current.heading || current.groups.length)) flush();
+      if (level <= 2) {
+        current = {
+          id: blockDomId(group.block),
+          heading: group.block,
+          groups: [],
+        };
+        continue;
+      }
+    }
+    current.groups.push(group);
+  }
+  flush();
+  return sections;
+}
+
+export function splitCalloutText(items: Rich[] | undefined): { title: string; body: string } {
+  const rich = items ?? [];
+  const first = rich[0];
+  if (first?.annotations?.bold && first.text.trim()) {
+    return { title: first.text.trim(), body: plainRichText(rich.slice(1)) };
+  }
+  const full = plainRichText(rich);
+  const split = full.search(/[.!?]\s/);
+  if (split > 0 && split <= 56) {
+    return { title: full.slice(0, split).trim(), body: full.slice(split + 1).trim() };
+  }
+  return { title: full, body: "" };
+}
+
 export function groupBlocks(blocks: Block[]): RenderGroup[] {
   const groups: RenderGroup[] = [];
   let index = 0;
@@ -146,6 +225,16 @@ export function groupBlocks(blocks: Block[]): RenderGroup[] {
         index += 1;
       }
       if (items.length) groups.push({ kind: "list", listType, items });
+      continue;
+    }
+    if (block.type === "callout") {
+      const items: Block[] = [];
+      while (index < blocks.length && blocks[index]?.type === "callout") {
+        items.push(blocks[index]!);
+        index += 1;
+      }
+      if (items.length >= 2) groups.push({ kind: "callout_grid", items });
+      else if (items[0]) groups.push({ kind: "block", block: items[0] });
       continue;
     }
     groups.push({ kind: "block", block });
@@ -451,13 +540,23 @@ function renderContentBlock(
     );
   }
   if (block.type === "callout") {
+    const split = splitCalloutText(block.rich_text);
     return (
       <BlockWithOptionalVideos key={groupIndex} items={block.rich_text}>
         <aside id={blockDomId(block)} className="notion-callout">
           <span className="callout-icon" aria-hidden>
             {block.icon || "💡"}
           </span>
-          <div className="callout-body">{rich(block)}</div>
+          <div className="callout-body">
+            {split.body ? (
+              <>
+                <strong className="callout-title">{split.title}</strong>
+                <span className="callout-sub">{split.body}</span>
+              </>
+            ) : (
+              rich(block)
+            )}
+          </div>
         </aside>
       </BlockWithOptionalVideos>
     );
@@ -495,6 +594,92 @@ function renderContentBlock(
   );
 }
 
+function CalloutGrid({
+  items,
+  rich,
+}: {
+  items: Block[];
+  rich: (block: Block) => React.ReactNode;
+}) {
+  const compact =
+    items.length >= 3 &&
+    items.length <= 4 &&
+    items.every((item) => plainRichText(item.rich_text).length <= 72);
+  return (
+    <div className={`callout-grid ${compact ? "is-compact" : ""}`}>
+      {items.map((item, index) => {
+        const split = splitCalloutText(item.rich_text);
+        const ids = collectYouTubeIds(richYouTubeUrls(item.rich_text));
+        const onlyVideo = isYouTubeOnlyRich(item.rich_text);
+        return (
+          <aside
+            key={index}
+            id={blockDomId(item)}
+            className={`feature-card tone-${(index % 4) + 1}`}
+          >
+            <span className="icon-chip" aria-hidden>
+              {item.icon || "•"}
+            </span>
+            {onlyVideo && ids.length ? (
+              <YouTubeStack ids={ids} />
+            ) : (
+              <>
+                {split.title ? <h3 className="feature-title">{split.title}</h3> : rich(item)}
+                {split.body ? <p className="feature-sub">{split.body}</p> : null}
+                <YouTubeStack ids={ids} />
+              </>
+            )}
+          </aside>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderGroup(
+  group: RenderGroup,
+  groupIndex: number,
+  imageUrls: Record<string, string>,
+  flag: string | undefined,
+  onInternal: (id: string) => void,
+  rich: (block: Block) => React.ReactNode,
+  fields: Record<string, string>,
+  onFieldChange?: (key: string, value: string) => void,
+  onFieldCommit?: (key: string, value: string) => void,
+): React.ReactNode {
+  if (group.kind === "callout_grid") {
+    return <CalloutGrid key={groupIndex} items={group.items} rich={rich} />;
+  }
+  if (group.kind === "list") {
+    const ListTag = group.listType === "numbered_list_item" ? "ol" : "ul";
+    return (
+      <ListTag key={groupIndex} className={`notion-list ${group.listType}`}>
+        {group.items.map((item, itemIndex) => {
+          const ids = collectYouTubeIds(richYouTubeUrls(item.rich_text));
+          const onlyVideo = isYouTubeOnlyRich(item.rich_text);
+          return (
+            <li key={itemIndex} id={blockDomId(item)}>
+              {onlyVideo && ids.length ? null : rich(item)}
+              <YouTubeStack ids={ids} />
+            </li>
+          );
+        })}
+      </ListTag>
+    );
+  }
+  return renderContentBlock(
+    group.block,
+    groupIndex,
+    imageUrls,
+    flag,
+    onInternal,
+    rich,
+    fields,
+    onFieldChange,
+    onFieldCommit,
+  );
+}
+
 export function DocumentBody({
   blocks,
   imageUrls,
@@ -522,37 +707,70 @@ export function DocumentBody({
       onFieldCommit={onFieldCommit}
     />
   );
+  const groups = groupBlocks(blocks);
+  const sections = splitSections(groups);
+  const useCards = sections.length > 1 || Boolean(sections[0]?.heading);
 
   return (
-    <article className="article-body notion-doc">
-      {groupBlocks(blocks).map((group, groupIndex) => {
-        if (group.kind === "list") {
-          const ListTag = group.listType === "numbered_list_item" ? "ol" : "ul";
+    <article className={`article-body notion-doc ${useCards ? "is-sectioned" : ""}`}>
+      {sections.map((section, sectionIndex) => {
+        const body = section.groups.map((group, groupIndex) =>
+          renderGroup(
+            group,
+            groupIndex,
+            imageUrls,
+            flag,
+            onInternal,
+            rich,
+            fields,
+            onFieldChange,
+            onFieldCommit,
+          ),
+        );
+        if (!useCards) {
           return (
-            <ListTag key={groupIndex} className={`notion-list ${group.listType}`}>
-              {group.items.map((item, itemIndex) => {
-                const ids = collectYouTubeIds(richYouTubeUrls(item.rich_text));
-                const onlyVideo = isYouTubeOnlyRich(item.rich_text);
-                return (
-                  <li key={itemIndex} id={blockDomId(item)}>
-                    {onlyVideo && ids.length ? null : rich(item)}
-                    <YouTubeStack ids={ids} />
-                  </li>
-                );
-              })}
-            </ListTag>
+            <React.Fragment key={sectionIndex}>
+              {section.heading
+                ? renderContentBlock(
+                    section.heading,
+                    0,
+                    imageUrls,
+                    flag,
+                    onInternal,
+                    rich,
+                    fields,
+                    onFieldChange,
+                    onFieldCommit,
+                  )
+                : null}
+              {body}
+            </React.Fragment>
           );
         }
-        return renderContentBlock(
-          group.block,
-          groupIndex,
-          imageUrls,
-          flag,
-          onInternal,
-          rich,
-          fields,
-          onFieldChange,
-          onFieldCommit,
+        const onlyGrid =
+          section.groups.length === 1 && section.groups[0]?.kind === "callout_grid";
+        return (
+          <section
+            key={sectionIndex}
+            className={
+              onlyGrid ? "section-flush" : `section-card ${section.heading ? "" : "is-intro"}`
+            }
+          >
+            {section.heading
+              ? renderContentBlock(
+                  section.heading,
+                  0,
+                  imageUrls,
+                  flag,
+                  onInternal,
+                  rich,
+                  fields,
+                  onFieldChange,
+                  onFieldCommit,
+                )
+              : null}
+            {body}
+          </section>
         );
       })}
     </article>

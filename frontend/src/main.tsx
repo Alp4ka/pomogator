@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { BottomDock, ChildList, Hero, SectionTabs } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
   scrollToSection,
+  splitPageChrome,
   withHeadingAnchors,
 } from "./document";
+import { Icon } from "./icons";
 import {
   ApiError,
   downloadPagePdf,
@@ -31,7 +34,6 @@ import {
 import { applyTheme, bindThemeListeners } from "./theme";
 import "./style.css";
 
-type Child = { id: string; title: string; locked: boolean };
 type HistoryItem = { id: string; title: string };
 type NavState = { pageId: string; history: HistoryItem[] };
 
@@ -128,7 +130,7 @@ function ScrollTopButton() {
       aria-label="Наверх"
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
     >
-      ↑
+      <Icon name="up" />
     </button>
   );
 }
@@ -152,77 +154,6 @@ function PageLoader({ label = "Загружаем…" }: { label?: string }) {
   );
 }
 
-function PageOutline({
-  sections,
-  childrenPages,
-  onOpenChild,
-  onOpenPaywall,
-}: {
-  sections: { id: string; level: number; title: string }[];
-  childrenPages: Child[];
-  onOpenChild: (id: string) => void;
-  onOpenPaywall: (title: string, resumeId?: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  if (!sections.length && !childrenPages.length) return null;
-  const count = sections.length + childrenPages.length;
-  return (
-    <nav className={`page-outline ${open ? "is-open" : "is-collapsed"}`} aria-label="Оглавление">
-      <button
-        type="button"
-        className="page-outline-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="page-outline-toggle-label">
-          <h2>Оглавление</h2>
-          <span className="muted">{count}</span>
-        </span>
-        <span className="page-outline-chevron" aria-hidden>
-          {open ? "▾" : "▸"}
-        </span>
-      </button>
-      {open ? (
-        <div className="page-outline-body">
-          {sections.length > 0 ? (
-            <ol className="page-outline-list">
-              {sections.map((item) => (
-                <li key={item.id} data-level={item.level}>
-                  <button
-                    type="button"
-                    className="page-outline-link"
-                    onClick={() => scrollToSection(item.id)}
-                  >
-                    {item.title}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-          {childrenPages.length > 0 ? (
-            <ul className="toc-list page-outline-children">
-              {childrenPages.map((child) => (
-                <li key={child.id}>
-                  <button
-                    type="button"
-                    className="toc-item"
-                    onClick={() =>
-                      child.locked ? onOpenPaywall(child.title, child.id) : onOpenChild(child.id)
-                    }
-                  >
-                    <span className="toc-title">{child.title}</span>
-                    <span className="toc-meta">{child.locked ? "Закрыто" : "Открыть"}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-    </nav>
-  );
-}
-
 function SiteNav({
   onBack,
   onHome,
@@ -235,7 +166,7 @@ function SiteNav({
   return (
     <nav className="site-nav" aria-label="Навигация">
       <button type="button" className="nav-btn" onClick={onBack} aria-label={backLabel}>
-        ← Назад
+        Назад
       </button>
       <button type="button" className="nav-btn" onClick={onHome} aria-label="На главную">
         На главную
@@ -265,31 +196,48 @@ function Paywall({
     <main className="shell" aria-live="polite">
       <SiteNav onBack={onBack} onHome={onHome} backLabel="Назад" />
       <section className="paywall">
-        <p className="kicker">Полный доступ</p>
-        <h1>{title}</h1>
-        <p className="lede">
-          Все закрытые этапы и обновления по стране <strong>{countryTitle}</strong>.
-        </p>
-        <ul className="plain-list">
-          <li>Закрытые этапы и чек-листы</li>
-          <li>Контакты без рекламных переходов</li>
-          <li>Будущие обновления этой страны</li>
-        </ul>
-        <div className="price-row">
-          <div>
-            <span className="muted">Тестовая оплата</span>
-            <strong className="price">0 ₽</strong>
-          </div>
-          <button type="button" className="btn" disabled={busy} onClick={onBuy}>
-            {busy ? "Открываем…" : "Оплатить полный доступ"}
-          </button>
-        </div>
-        {error ? (
-          <p className="form-error" role="alert">
-            {error}
+        <div className="paywall-card">
+          <p className="kicker">Полный доступ</p>
+          <h1>{title}</h1>
+          <p className="lede">
+            Все закрытые этапы и обновления по стране <strong>{countryTitle}</strong>.
           </p>
-        ) : null}
-        <p className="fineprint">Деньги не списываются. Позже подключим боевую оплату.</p>
+          <ul className="plain-list">
+            <li>
+              <span className="icon-chip tone-1" aria-hidden>
+                <Icon name="lock" />
+              </span>
+              Закрытые этапы и чек-листы
+            </li>
+            <li>
+              <span className="icon-chip tone-4" aria-hidden>
+                <Icon name="check" />
+              </span>
+              Контакты без рекламных переходов
+            </li>
+            <li>
+              <span className="icon-chip tone-3" aria-hidden>
+                <Icon name="refresh" />
+              </span>
+              Будущие обновления этой страны
+            </li>
+          </ul>
+          <div className="price-row">
+            <div>
+              <span className="muted">Тестовая оплата</span>
+              <strong className="price">0 ₽</strong>
+            </div>
+            <button type="button" className="btn" disabled={busy} onClick={onBuy}>
+              {busy ? "Открываем…" : "Оплатить полный доступ"}
+            </button>
+          </div>
+          {error ? (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <p className="fineprint">Деньги не списываются. Позже подключим боевую оплату.</p>
+        </div>
       </section>
     </main>
   );
@@ -322,7 +270,9 @@ function App() {
   const fieldTimers = useRef<Map<string, number>>(new Map());
   const savedFields = useRef<Record<string, string>>({});
   const pageIdRef = useRef(page?.id);
-  pageIdRef.current = page?.id;
+  useEffect(() => {
+    pageIdRef.current = page?.id;
+  }, [page?.id]);
   const documentBlocks = useMemo(
     () => (page ? withHeadingAnchors(page.document) : []),
     [page],
@@ -794,6 +744,12 @@ function App() {
     if (index === 0 && country?.title && item.title === country.title) return false;
     return true;
   });
+  const chrome = splitPageChrome(documentBlocks);
+  const isHub =
+    page.id === country?.root_page_id || page.children.length > 0 || Boolean(chrome.hero);
+  const tabItems = outline.filter((item) => item.level <= 2);
+  const backLabel = history.length > 1 || paywall ? "Назад" : "Закрыть";
+  const locationLabel = [country?.flag, country?.title].filter(Boolean).join(" ");
 
   if (loading) {
     return (
@@ -804,128 +760,119 @@ function App() {
     );
   }
 
-  return (
-    <main className="shell">
-      {nav}
+  const notices = (
+    <>
       {offlineMode || !navigator.onLine ? (
         <p className="offline-banner" role="status">
           Офлайн-режим: показана последняя сохранённая версия. Навигация по уже открытым разделам
           работает.
         </p>
       ) : null}
-      <header className="page-header">
-        <nav className="breadcrumb" aria-label="Путь">
-          <button type="button" className="breadcrumb-link" onClick={goHome}>
-            {country?.flag} {country?.title ?? "Страна"}
-          </button>
-          {breadcrumbTrail.map((item, index) => {
-            const isLast = index === breadcrumbTrail.length - 1;
-            return (
-              <span key={`${item.id}-${index}`} className="breadcrumb-step">
-                <span className="sep" aria-hidden>
-                  /
-                </span>
-                {isLast ? (
-                  <span className="breadcrumb-current" aria-current="page">
-                    {item.title}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="breadcrumb-link"
-                    onClick={() => {
-                      const position = history.findIndex((entry) => entry.id === item.id);
-                      if (position >= 0) {
-                        setHistory((items) => items.slice(0, position + 1));
-                      }
-                      void loadPage(item.id, { history: "none" });
-                    }}
-                  >
-                    {item.title}
-                  </button>
-                )}
-              </span>
-            );
-          })}
-        </nav>
-        <div className="title-row">
-          <h1>{page.title}</h1>
-          <span className={`access ${country?.paid ? "is-paid" : "is-free"}`}>
-            {country?.paid ? "Полный доступ" : "Базовый доступ"}
-          </span>
-        </div>
-        <div className="action-row">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={syncing || exporting}
-            onClick={() => void refreshFromNotion()}
-          >
-            {syncing ? "Обновляем…" : "Обновить статью"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={exporting || syncing}
-            onClick={() => void exportPdf()}
-          >
-            {exporting ? "Готовим PDF…" : "Скачать PDF"}
-          </button>
-          {!country?.paid && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={syncing}
-              onClick={() =>
-                openPaywall(`Полный доступ: ${country?.title ?? page.title}`, page.id)
-              }
-            >
-              Оплатить полный доступ
-            </button>
-          )}
-        </div>
-        {syncing ? (
-          <div className="sync-banner sync-progress" role="status" aria-live="polite">
-            <div className="sync-progress-head">
-              <span>{syncPhase || "Обновляем материалы…"}</span>
-              <span className="sync-progress-pct">{syncProgress}%</span>
-            </div>
-            <div
-              className="sync-progress-track"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={syncProgress}
-              aria-label="Прогресс обновления"
-            >
-              <div className="sync-progress-fill" style={{ width: `${syncProgress}%` }} />
-            </div>
-            <p className="sync-progress-hint">Поля и галочки сохраняются.</p>
+      {syncing ? (
+        <div className="sync-banner sync-progress" role="status" aria-live="polite">
+          <div className="sync-progress-head">
+            <span>{syncPhase || "Обновляем материалы…"}</span>
+            <span className="sync-progress-pct">{syncProgress}%</span>
           </div>
-        ) : null}
-        {syncNotice ? (
-          <p className="sync-banner is-ok" role="status">
-            {syncNotice}
-          </p>
-        ) : null}
-        {syncError ? (
-          <p className="form-error" role="alert">
-            {syncError}
-          </p>
-        ) : null}
-        {exportError ? (
-          <p className="form-error" role="alert">
-            {exportError}
-          </p>
-        ) : null}
-      </header>
+          <div
+            className="sync-progress-track"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={syncProgress}
+            aria-label="Прогресс обновления"
+          >
+            <div className="sync-progress-fill" style={{ width: `${syncProgress}%` }} />
+          </div>
+          <p className="sync-progress-hint">Поля и галочки сохраняются.</p>
+        </div>
+      ) : null}
+      {syncNotice ? (
+        <p className="sync-banner is-ok" role="status">
+          {syncNotice}
+        </p>
+      ) : null}
+      {syncError ? (
+        <p className="form-error" role="alert">
+          {syncError}
+        </p>
+      ) : null}
+      {exportError ? (
+        <p className="form-error" role="alert">
+          {exportError}
+        </p>
+      ) : null}
+    </>
+  );
 
-      <PageOutline
-        key={page.id}
-        sections={outline}
-        childrenPages={page.children}
-        onOpenChild={open}
-        onOpenPaywall={openPaywall}
+  return (
+    <main className={`shell ${isHub ? "" : "is-reader"}`}>
+      {isHub ? (
+        <Hero
+          title={page.title}
+          lede={chrome.lede}
+          location={locationLabel}
+          imageUrl={chrome.hero?.image_id ? imageUrls[chrome.hero.image_id] : undefined}
+          placeholder={country?.flag}
+          accessLabel={country?.paid ? "Полный доступ" : "Базовый доступ"}
+          paid={Boolean(country?.paid)}
+          onBack={goBack}
+          backLabel={backLabel}
+        />
+      ) : (
+        <header className="reader-head">
+          <button type="button" className="hero-back" onClick={goBack} aria-label={backLabel}>
+            <Icon name="back" />
+          </button>
+          <nav className="breadcrumb" aria-label="Путь">
+            <button type="button" className="breadcrumb-link" onClick={goHome}>
+              {locationLabel || "Страна"}
+            </button>
+            {breadcrumbTrail.map((item, index) => {
+              const isLast = index === breadcrumbTrail.length - 1;
+              return (
+                <span key={`${item.id}-${index}`} className="breadcrumb-step">
+                  <span className="sep" aria-hidden>
+                    /
+                  </span>
+                  {isLast ? (
+                    <span className="breadcrumb-current" aria-current="page">
+                      {item.title}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="breadcrumb-link"
+                      onClick={() => {
+                        const position = history.findIndex((entry) => entry.id === item.id);
+                        if (position >= 0) {
+                          setHistory((items) => items.slice(0, position + 1));
+                        }
+                        void loadPage(item.id, { history: "none" });
+                      }}
+                    >
+                      {item.title}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+          <div className="title-row">
+            <h1>{page.title}</h1>
+            <span className={`access ${country?.paid ? "is-paid" : "is-free"}`}>
+              {country?.paid ? "Полный доступ" : "Базовый доступ"}
+            </span>
+          </div>
+        </header>
+      )}
+      {notices}
+      <SectionTabs items={tabItems} onSelect={scrollToSection} />
+      <ChildList
+        title={page.children.length ? "Разделы" : undefined}
+        items={page.children}
+        onOpen={open}
+        onPaywall={openPaywall}
       />
       {!country?.paid && lockedCount > 0 ? (
         <button
@@ -941,9 +888,8 @@ function App() {
           Открыть {lockedCount} закрытых материалов
         </button>
       ) : null}
-
       <DocumentBody
-        blocks={documentBlocks}
+        blocks={chrome.rest}
         imageUrls={imageUrls}
         flag={country?.flag}
         onInternal={open}
@@ -951,10 +897,30 @@ function App() {
         onFieldChange={onFieldChange}
         onFieldCommit={onFieldCommit}
       />
-
+      <BottomDock
+        onHome={goHome}
+        onPdf={() => void exportPdf()}
+        onRefresh={() => void refreshFromNotion()}
+        onPay={() => openPaywall(`Полный доступ: ${country?.title ?? page.title}`, page.id)}
+        pdfBusy={exporting}
+        syncBusy={syncing}
+        showPay={!country?.paid}
+      />
       <ScrollTopButton />
     </main>
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+function mount(): void {
+  const root = document.getElementById("root");
+  if (!root) return;
+  if (import.meta.env.DEV && new URLSearchParams(location.search).get("preview") === "1") {
+    void import("./preview").then(({ PreviewApp }) => {
+      createRoot(root).render(<PreviewApp />);
+    });
+    return;
+  }
+  createRoot(root).render(<App />);
+}
+
+mount();

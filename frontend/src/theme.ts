@@ -17,23 +17,23 @@ function readOsScheme(): "light" | "dark" {
 function fallbackPalette(scheme: "light" | "dark"): Required<ThemeParams> {
   if (scheme === "dark") {
     return {
-      bg_color: "#191919",
-      text_color: "#ffffffd9",
-      hint_color: "#ffffff73",
-      link_color: "#529cca",
-      button_color: "#2eaadc",
+      bg_color: "#16181d",
+      text_color: "#f2f4f7",
+      hint_color: "#9aa3b2",
+      link_color: "#6ee7b0",
+      button_color: "#1db978",
       button_text_color: "#ffffff",
-      secondary_bg_color: "#202020",
+      secondary_bg_color: "#1e2229",
     };
   }
   return {
-    bg_color: "#ffffff",
-    text_color: "#37352f",
-    hint_color: "#787774",
-    link_color: "#0b6bcb",
-    button_color: "#2383e2",
+    bg_color: "#f3f5f8",
+    text_color: "#1c2430",
+    hint_color: "#8b94a3",
+    link_color: "#1b8f6a",
+    button_color: "#1db978",
     button_text_color: "#ffffff",
-    secondary_bg_color: "#f7f6f3",
+    secondary_bg_color: "#ffffff",
   };
 }
 
