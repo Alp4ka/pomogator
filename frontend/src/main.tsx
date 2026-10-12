@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BottomDock, ChildList, CountryHome, Hero, SectionTabs } from "./chrome";
+import { BottomDock, ChildList, CountryHome, Hero, PageLoader, SectionTabs } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
@@ -137,25 +137,6 @@ function ScrollTopButton() {
     >
       <Icon name="up" />
     </button>
-  );
-}
-
-function PageLoader({ label = "Загружаем…" }: { label?: string }) {
-  return (
-    <div className="page-loader" role="status" aria-live="polite" aria-busy="true">
-      <div className="page-loader-orbit" aria-hidden="true">
-        <span className="page-loader-ring" />
-        <span className="page-loader-ring is-inner" />
-        <span className="page-loader-dot" />
-      </div>
-      <p className="page-loader-label">{label}</p>
-      <div className="page-loader-skeleton" aria-hidden="true">
-        <span className="page-loader-line is-title" />
-        <span className="page-loader-line" />
-        <span className="page-loader-line is-mid" />
-        <span className="page-loader-line is-short" />
-      </div>
-    </div>
   );
 }
 
@@ -705,17 +686,24 @@ function App() {
 
   const backLabel = homeOpen ? "Закрыть" : "Назад";
   const nav = <SiteNav onBack={goBack} onHome={goHome} backLabel={backLabel} />;
+  const loader =
+    loading || (homeOpen && homeLoading) ? (
+      <PageLoader label={homeOpen ? "Загружаем список…" : "Загружаем…"} />
+    ) : null;
 
   if (homeOpen) {
     return (
-      <CountryHome
-        items={countries}
-        loading={homeLoading}
-        error={homeError}
-        onOpen={openCountry}
-        onRetry={() => void loadCountryList()}
-        onClose={goBack}
-      />
+      <>
+        <CountryHome
+          items={countries}
+          loading={false}
+          error={homeError}
+          onOpen={openCountry}
+          onRetry={() => void loadCountryList()}
+          onClose={goBack}
+        />
+        {loader}
+      </>
     );
   }
 
@@ -732,14 +720,6 @@ function App() {
       />
     );
   }
-  if (loading && !page) {
-    return (
-      <main className="shell state is-loading" aria-busy="true">
-        {nav}
-        <PageLoader label="Загружаем путеводитель…" />
-      </main>
-    );
-  }
   if (error) {
     return (
       <main className="shell state" role="alert">
@@ -753,14 +733,16 @@ function App() {
         >
           Повторить
         </button>
+        {loader}
       </main>
     );
   }
   if (!page) {
     return (
-      <main className="shell state">
+      <main className="shell state" aria-busy={loading}>
         {nav}
-        <h1>Материалы не найдены</h1>
+        {loading ? null : <h1>Материалы не найдены</h1>}
+        {loader}
       </main>
     );
   }
@@ -775,15 +757,6 @@ function App() {
     page.id === country?.root_page_id || page.children.length > 0 || Boolean(chrome.hero);
   const tabItems = outline.filter((item) => item.level <= 2);
   const locationLabel = [country?.flag, country?.title].filter(Boolean).join(" ");
-
-  if (loading) {
-    return (
-      <main className="shell is-loading" aria-busy="true">
-        {nav}
-        <PageLoader label="Открываем раздел…" />
-      </main>
-    );
-  }
 
   const notices = (
     <>
@@ -825,7 +798,7 @@ function App() {
   );
 
   return (
-    <main className={`shell ${isHub ? "" : "is-reader"}`}>
+    <main className={`shell ${isHub ? "" : "is-reader"}`} aria-busy={loading}>
       {isHub ? (
         <Hero
           title={page.title}
@@ -926,6 +899,7 @@ function App() {
         showPay={!country?.paid}
       />
       <ScrollTopButton />
+      {loader}
     </main>
   );
 }

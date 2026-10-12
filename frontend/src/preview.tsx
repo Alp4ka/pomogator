@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { BottomDock, ChildList, CountryHome, Hero, SectionTabs } from "./chrome";
+import { BottomDock, ChildList, CountryHome, Hero, PageLoader, SectionTabs } from "./chrome";
 import {
   DocumentBody,
   buildOutline,
@@ -173,7 +173,8 @@ const HERO_SRC =
   "https://images.unsplash.com/photo-1483729558449-99ef03a8a857?auto=format&fit=crop&w=1400&q=80";
 
 export function PreviewApp() {
-  const [view, setView] = useState<"home" | "hub" | "reader">("home");
+  const showLoader = new URLSearchParams(location.search).get("loader") === "1";
+  const [view, setView] = useState<"home" | "hub" | "reader">(showLoader ? "hub" : "home");
   const blocks = useMemo(
     () => withHeadingAnchors(view === "hub" ? HUB_BLOCKS : READER_BLOCKS),
     [view],
@@ -184,17 +185,20 @@ export function PreviewApp() {
 
   if (view === "home") {
     return (
-      <CountryHome
-        items={[
-          { slug: "brazil", title: "Бразилия", flag: "🇧🇷", paid: true },
-          { slug: "argentina", title: "Аргентина", flag: "🇦🇷", paid: false },
-        ]}
-        loading={false}
-        error=""
-        onOpen={() => setView("hub")}
-        onRetry={() => undefined}
-        onClose={() => undefined}
-      />
+      <>
+        <CountryHome
+          items={[
+            { slug: "brazil", title: "Бразилия", flag: "🇧🇷", paid: true },
+            { slug: "argentina", title: "Аргентина", flag: "🇦🇷", paid: false },
+          ]}
+          loading={false}
+          error=""
+          onOpen={() => setView("hub")}
+          onRetry={() => undefined}
+          onClose={() => undefined}
+        />
+        {showLoader ? <PageLoader /> : null}
+      </>
     );
   }
 
@@ -260,6 +264,7 @@ export function PreviewApp() {
         syncBusy={false}
         showPay={view === "hub"}
       />
+      {showLoader ? <PageLoader /> : null}
     </main>
   );
 }

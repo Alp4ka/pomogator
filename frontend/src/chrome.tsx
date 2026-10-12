@@ -153,6 +153,17 @@ export function ChildList({
   );
 }
 
+export function PageLoader({ label = "Загружаем…" }: { label?: string }) {
+  return (
+    <div className="page-loader" role="status" aria-live="polite" aria-busy="true">
+      <div className="page-loader-mark" aria-hidden="true">
+        <img className="page-loader-logo" src="/app-logo.svg" width={84} height={84} alt="" />
+      </div>
+      <span className="page-loader-label">{label}</span>
+    </div>
+  );
+}
+
 export function CountryHome({
   items,
   loading,
