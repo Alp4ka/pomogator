@@ -1,3 +1,4 @@
+import io
 from uuid import uuid4
 
 from pomogator.domain.pdf_trace import (
@@ -11,8 +12,12 @@ from pomogator.infrastructure.pdf.render import (
     _cell_text,
     _plain,
     _register_fonts,
+    _wrap,
     render_page_pdf,
+    split_callout_text,
 )
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 
 def test_seal_roundtrip_contains_user_and_subscription_fields():
@@ -49,10 +54,36 @@ def test_seal_roundtrip_contains_user_and_subscription_fields():
 
 def test_register_fonts_uses_bundled_unicode_face():
     _register_fonts.cache_clear()
-    regular, bold, symbols = _register_fonts()
+    regular, bold, extras = _register_fonts()
     assert regular == "GuideSans"
     assert bold == "GuideSans-Bold"
-    assert symbols == "GuideSymbols"
+    assert "GuideEmoji" in extras
+    assert "GuideSymbols" in extras
+
+
+def test_split_callout_keeps_bold_title_and_body():
+    assert split_callout_text(
+        [
+            {"text": "Кондиционер в квартире ОБЯЗАТЕЛЕН", "annotations": {"bold": True}},
+            {"text": " В жаркие месяцы без него спать почти невозможно."},
+        ]
+    ) == (
+        "Кондиционер в квартире ОБЯЗАТЕЛЕН",
+        "В жаркие месяцы без него спать почти невозможно.",
+    )
+
+
+def test_wrap_keeps_russian_paragraph_on_few_lines():
+    _register_fonts.cache_clear()
+    regular, _bold, extras = _register_fonts()
+    pdf = canvas.Canvas(io.BytesIO(), pagesize=A4)
+    text = (
+        "В жаркие месяцы без него спать почти невозможно, особенно с маленьким "
+        "ребёнком. Ищите объявления с split-системой и уточняйте, входит ли электричество в аренду."
+    )
+    lines = _wrap(pdf, text, regular, 11, 460, extras)
+    assert 2 <= len(lines) <= 4
+    assert all(" " in line or len(line) > 12 for line in lines)
 
 
 def test_render_pdf_embeds_disguised_trace():
@@ -169,3 +200,31 @@ def test_render_pdf_table_cells_are_readable_text():
     assert b"annotations" not in pdf
     assert b"strikethrough" not in pdf
     assert b"DejaVu" in pdf
+
+
+def test_render_pdf_keeps_emoji_and_document_blocks():
+    export_id = uuid4()
+    pdf = render_page_pdf(
+        title="Жуан-Песоа 🇧🇷",
+        document=[
+            {"type": "heading_2", "rich_text": [{"text": "Почему выбирают Жуан"}]},
+            {
+                "type": "callout",
+                "icon": "🏠",
+                "rich_text": [
+                    {"text": "качество жизни", "annotations": {"bold": True}},
+                    {"text": " спокойный безопасный город"},
+                ],
+            },
+            {
+                "type": "quote",
+                "rich_text": [{"text": "Не откладывайте страховку на первую неделю."}],
+            },
+            {"type": "bulleted_list_item", "rich_text": [{"text": "Качественная медицина"}]},
+        ],
+        export_id=export_id,
+        sealed_token="token",
+    )
+    assert pdf.startswith(b"%PDF")
+    assert b"DejaVu" in pdf
+    assert b"NotoEmoji" in pdf or b"GuideEmoji" in pdf or b"Emoji" in pdf
