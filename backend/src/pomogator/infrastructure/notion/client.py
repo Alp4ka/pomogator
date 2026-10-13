@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import hashlib
 import logging
 import re
@@ -36,6 +37,14 @@ class ImportedImage:
     data: bytes
 
 
+@dataclass(frozen=True, slots=True)
+class PageSnapshot:
+    last_edited_at: str
+    document: list[dict[str, Any]]
+    child_ids: tuple[str, ...] = ()
+    database_ids: tuple[str, ...] = ()
+
+
 @dataclass(slots=True)
 class ImportedPage:
     notion_page_id: str
@@ -44,6 +53,10 @@ class ImportedPage:
     document: list[dict[str, Any]]
     children: list["ImportedPage"] = field(default_factory=list)
     nav_label: str | None = None
+    last_edited_at: str | None = None
+    database_ids: list[str] = field(default_factory=list)
+    icon_emoji: str | None = None
+    reused: bool = False
 
 
 @dataclass(slots=True)
@@ -355,8 +368,25 @@ class NotionClient:
                 document.extend(await self._blocks_document(block["id"]))
         return document
 
-    async def _page(self, page_id: str, inherited: AccessLevel) -> ImportedPage:
-        meta = await self._get(f"/pages/{page_id}")
+    @staticmethod
+    def _norm_page_id(page_id: str) -> str:
+        return page_id.replace("-", "").lower()
+
+    @staticmethod
+    def _icon_emoji(meta: dict[str, Any]) -> str | None:
+        icon = meta.get("icon") or {}
+        if icon.get("type") == "emoji" and icon.get("emoji"):
+            return str(icon["emoji"])
+        return None
+
+    @staticmethod
+    def _last_edited_at(meta: dict[str, Any]) -> str | None:
+        value = meta.get("last_edited_time")
+        return str(value) if value else None
+
+    def _title_from_meta(
+        self, meta: dict[str, Any], inherited: AccessLevel
+    ) -> tuple[str, AccessLevel, str | None]:
         title_rich: list[dict[str, Any]] = next(
             (
                 v.get("title", [])
@@ -365,19 +395,79 @@ class NotionClient:
             ),
             [],
         )
-        title, level, nav_label = parse_page_title(
-            self._plain(title_rich) or "Без названия", inherited
-        )
+        return parse_page_title(self._plain(title_rich) or "Без названия", inherited)
+
+    async def _import_children(
+        self,
+        page_ids: list[str],
+        inherited: AccessLevel,
+        snapshots: dict[str, PageSnapshot],
+        seen: set[str],
+    ) -> list[ImportedPage]:
+        children: list[ImportedPage] = []
+        for child_id in page_ids:
+            nid = self._norm_page_id(child_id)
+            if nid in seen:
+                continue
+            seen.add(nid)
+            children.append(await self._page(child_id, inherited, snapshots))
+        return children
+
+    async def _page(
+        self,
+        page_id: str,
+        inherited: AccessLevel,
+        snapshots: dict[str, PageSnapshot] | None = None,
+    ) -> ImportedPage:
+        known = snapshots or {}
+        meta = await self._get(f"/pages/{page_id}")
+        title, level, nav_label = self._title_from_meta(meta, inherited)
+        edited = self._last_edited_at(meta)
+        nid = self._norm_page_id(page_id)
+        snap = known.get(nid)
+        if snap is not None and edited and snap.last_edited_at == edited:
+            seen = {nid}
+            children = await self._import_children(list(snap.child_ids), level, known, seen)
+            extra_ids: list[str] = []
+            for database_id in snap.database_ids:
+                extra_ids.extend(await self._database_pages(database_id))
+            children.extend(await self._import_children(extra_ids, level, known, seen))
+            log.info("Notion page %s unchanged, reusing cached blocks", nid)
+            return ImportedPage(
+                nid,
+                title,
+                level,
+                copy.deepcopy(list(snap.document)),
+                children,
+                nav_label=nav_label,
+                last_edited_at=edited,
+                database_ids=list(snap.database_ids),
+                icon_emoji=self._icon_emoji(meta),
+                reused=True,
+            )
+
         document, children = [], []
+        database_ids: list[str] = []
+        seen = {nid}
         for block in await self._all_blocks(page_id):
             kind = block["type"]
             value = block.get(kind, {})
             if kind == "child_page":
-                children.append(await self._page(block["id"], level))
+                child_id = str(block["id"])
+                child_nid = self._norm_page_id(child_id)
+                if child_nid not in seen:
+                    seen.add(child_nid)
+                    children.append(await self._page(child_id, level, known))
                 continue
             if kind == "child_database":
-                for child_id in await self._database_pages(block["id"]):
-                    children.append(await self._page(child_id, level))
+                database_id = str(block["id"])
+                database_ids.append(self._norm_page_id(database_id))
+                for child_id in await self._database_pages(database_id):
+                    child_nid = self._norm_page_id(child_id)
+                    if child_nid in seen:
+                        continue
+                    seen.add(child_nid)
+                    children.append(await self._page(child_id, level, known))
                 continue
             if kind == "image":
                 document.append(await self._image(block))
@@ -408,15 +498,48 @@ class NotionClient:
                 nested = await self._blocks_document(block["id"])
                 document.extend(nested)
         return ImportedPage(
-            page_id.replace("-", ""), title, level, document, children, nav_label=nav_label
+            nid,
+            title,
+            level,
+            document,
+            children,
+            nav_label=nav_label,
+            last_edited_at=edited,
+            database_ids=database_ids,
+            icon_emoji=self._icon_emoji(meta),
         )
 
-    async def import_country(self, page_id: str, slug: str, fallback_flag: str) -> ImportedCountry:
+    async def import_country(
+        self,
+        page_id: str,
+        slug: str,
+        fallback_flag: str,
+        snapshots: dict[str, PageSnapshot] | None = None,
+    ) -> ImportedCountry:
         self.images = {}
-        root = await self._page(page_id, AccessLevel.FREE)
-        meta = await self._get(f"/pages/{page_id}")
-        icon = meta.get("icon") or {}
-        flag = icon.get("emoji", fallback_flag) if icon.get("type") == "emoji" else fallback_flag
-        return ImportedCountry(
-            page_id.replace("-", ""), slug, flag, root, list(self.images.values())
+        root = await self._page(page_id, AccessLevel.FREE, snapshots)
+        total, reused = _count_imported(root)
+        log.info(
+            "Notion import %s: %s pages (%s reused, %s fetched)",
+            slug,
+            total,
+            reused,
+            total - reused,
         )
+        return ImportedCountry(
+            self._norm_page_id(page_id),
+            slug,
+            root.icon_emoji or fallback_flag,
+            root,
+            list(self.images.values()),
+        )
+
+
+def _count_imported(node: ImportedPage) -> tuple[int, int]:
+    total = 1
+    reused = 1 if node.reused else 0
+    for child in node.children:
+        child_total, child_reused = _count_imported(child)
+        total += child_total
+        reused += child_reused
+    return total, reused

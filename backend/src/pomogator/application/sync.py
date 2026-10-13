@@ -15,7 +15,7 @@ from pomogator.infrastructure.db.models import (
     PageModel,
     SyncRunModel,
 )
-from pomogator.infrastructure.notion.client import ImportedPage, NotionClient
+from pomogator.infrastructure.notion.client import ImportedPage, NotionClient, PageSnapshot
 
 
 class SyncCountry:
@@ -42,7 +42,12 @@ class SyncCountry:
         await self.session.commit()
         run_id = run.id
         try:
-            imported = await self.notion.import_country(source.page_id, source.slug, source.flag)
+            imported = await self.notion.import_country(
+                source.page_id,
+                source.slug,
+                source.flag,
+                snapshots=await self._snapshots(country.id),
+            )
             await self.session.execute(
                 text("select pg_advisory_xact_lock(hashtextextended(:key, 0))"),
                 {"key": f"country-sync:{source.page_id}"},
@@ -76,6 +81,8 @@ class SyncCountry:
                         document=node.document,
                         position=position,
                         archived=False,
+                        notion_last_edited_at=node.last_edited_at,
+                        notion_database_ids=list(node.database_ids),
                     )
                     self.session.add(page)
                     await self.session.flush()
@@ -88,6 +95,8 @@ class SyncCountry:
                         page.document,
                         page.position,
                         page.archived,
+                        page.notion_last_edited_at,
+                        page.notion_database_ids,
                     ) = (
                         parent,
                         node.title,
@@ -96,6 +105,8 @@ class SyncCountry:
                         node.document,
                         position,
                         False,
+                        node.last_edited_at,
+                        list(node.database_ids),
                     )
                 known[node.notion_page_id] = page.id
                 for index, child in enumerate(node.children):
@@ -149,3 +160,41 @@ class SyncCountry:
             run.finished_at = datetime.now(UTC)
             await self.session.commit()
             raise
+
+    async def _snapshots(self, country_id: UUID) -> dict[str, PageSnapshot]:
+        pages = list(
+            await self.session.scalars(
+                select(PageModel).where(
+                    PageModel.country_id == country_id,
+                    PageModel.archived.is_(False),
+                )
+            )
+        )
+        return build_page_snapshots(pages)
+
+
+def build_page_snapshots(pages: list[PageModel]) -> dict[str, PageSnapshot]:
+    children: dict[UUID | None, list[PageModel]] = {}
+    for page in pages:
+        children.setdefault(page.parent_id, []).append(page)
+    for group in children.values():
+        group.sort(key=lambda item: item.position)
+    snapshots: dict[str, PageSnapshot] = {}
+    for page in pages:
+        edited = (page.notion_last_edited_at or "").strip()
+        if not edited:
+            continue
+        snapshots[page.notion_page_id.replace("-", "").lower()] = PageSnapshot(
+            last_edited_at=edited,
+            document=list(page.document or []),
+            child_ids=tuple(
+                child.notion_page_id.replace("-", "").lower()
+                for child in children.get(page.id, [])
+            ),
+            database_ids=tuple(
+                str(item).replace("-", "").lower()
+                for item in (page.notion_database_ids or [])
+                if item
+            ),
+        )
+    return snapshots

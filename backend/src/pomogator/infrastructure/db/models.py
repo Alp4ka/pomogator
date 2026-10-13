@@ -57,6 +57,8 @@ class PageModel(IdMixin, TimestampMixin, Base):
     document: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     position: Mapped[int] = mapped_column(Integer, default=0)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    notion_last_edited_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    notion_database_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
     country: Mapped[CountryModel] = relationship(back_populates="pages")
 
 
