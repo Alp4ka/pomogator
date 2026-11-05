@@ -20,7 +20,9 @@ export type IconName =
   | "leaf"
   | "cart"
   | "baby"
-  | "up";
+  | "up"
+  | "cafe"
+  | "camera";
 
 const PATHS: Record<IconName, string> = {
   pin: "M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11zm0-8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z",
@@ -46,7 +48,13 @@ const PATHS: Record<IconName, string> = {
   cart: "M5 6h2l1.2 9h9.3l1.7-6H8M9 20.2a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8zm9 0a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z",
   baby: "M12 8.2a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8zM7 20c0-3.3 2.2-5.5 5-5.5s5 2.2 5 5.5M8.2 12.2c.8.6 1.9 1 3.8 1s3-.4 3.8-1",
   up: "M6 14l6-6 6 6",
+  cafe: "M6 8h11v6.2A4.2 4.2 0 0 1 12.8 18H10A4 4 0 0 1 6 14.2V8zm11 1.2h1.6A2.4 2.4 0 0 1 21 11.6c0 1.4-1 2.5-2.4 2.5H17M8 20h8",
+  camera: "M4 8.5h3.1l1.4-2h7l1.4 2H20v10H4zm8 2.2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z",
 };
+
+export function iconPath(name: IconName): string {
+  return PATHS[name];
+}
 
 const RULES: [RegExp, IconName][] = [
   [/климат|погод|солнц|лето|осень|зима|весн/i, "sun"],
@@ -56,7 +64,9 @@ const RULES: [RegExp, IconName][] = [
   [/faq|вопрос/i, "faq"],
   [/город|район|жуан|песоа/i, "home"],
   [/медиц|больниц|врач|родд|health/i, "plus"],
-  [/парк|зелен|эколог/i, "tree"],
+  [/парк|зелен|эколог|пляж/i, "tree"],
+  [/кафе|ресторан|еда/i, "cafe"],
+  [/достопримеч|музей|обзор/i, "camera"],
   [/семь|ребён|малыш|новорожд/i, "heart"],
   [/стоим|цен|оплат/i, "cart"],
   [/контакт|связ|чат/i, "chat"],

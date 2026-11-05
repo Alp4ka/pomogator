@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Icon } from "./icons";
-import "leaflet/dist/leaflet.css";
+import { Icon, iconPath, pickIcon, type IconName } from "./icons";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 export type GeoPlace = {
   id: string;
@@ -28,14 +28,33 @@ export type GeoMapBlock = {
   places?: GeoPlace[];
 };
 
-const FALLBACK_COLORS = ["#1b8f6a", "#0288d1", "#e65100", "#9c27b0", "#c48912", "#880e4f"];
+const FALLBACK_COLORS = ["#e24b4b", "#e3a008", "#3f4a55", "#2f9a57", "#0288d1", "#9c27b0"];
+const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const DARK_STYLE = "https://tiles.openfreemap.org/styles/dark";
 
-function layerColor(name: string, layers: GeoLayer[], placeColor?: string): string {
-  if (placeColor) return placeColor;
-  const match = layers.find((layer) => layer.name === name);
-  if (match?.color) return match.color;
-  const index = Math.max(0, layers.findIndex((layer) => layer.name === name));
-  return FALLBACK_COLORS[index % FALLBACK_COLORS.length] ?? FALLBACK_COLORS[0];
+type LayerLook = { icon: IconName; color: string; short: string };
+
+function layerLook(name: string): LayerLook {
+  const icon = pickIcon(name);
+  if (/медиц|больниц|здоров|врач|родд/i.test(name)) {
+    return { icon: "plus", color: "#e24b4b", short: "Больницы" };
+  }
+  if (/кафе|ресторан|еда/i.test(name)) {
+    return { icon: "cafe", color: "#e3a008", short: "Кафе" };
+  }
+  if (/парк|пляж|прогул|зелен/i.test(name)) {
+    return { icon: "tree", color: "#2f9a57", short: "Парки" };
+  }
+  if (/магазин|торгов/i.test(name)) {
+    return { icon: "cart", color: "#0288d1", short: "Магазины" };
+  }
+  if (/детск|развлеч/i.test(name)) {
+    return { icon: "baby", color: "#9c27b0", short: "Детям" };
+  }
+  if (/достопримеч|музей|обзор/i.test(name)) {
+    return { icon: "camera", color: "#3f4a55", short: "Места" };
+  }
+  return { icon, color: FALLBACK_COLORS[0] ?? "#e24b4b", short: name };
 }
 
 function googlePlaceUrl(place: GeoPlace): string {
@@ -46,22 +65,46 @@ function googleDirectionsUrl(place: GeoPlace): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${place.lat.toFixed(6)},${place.lng.toFixed(6)}`;
 }
 
-function groupedPlaces(places: GeoPlace[]): [string, GeoPlace[]][] {
-  const order: string[] = [];
-  const buckets = new Map<string, GeoPlace[]>();
-  for (const place of places) {
-    const key = place.layer || "Места";
-    if (!buckets.has(key)) {
-      order.push(key);
-      buckets.set(key, []);
-    }
-    buckets.get(key)!.push(place);
-  }
-  return order.map((name) => [name, buckets.get(name) ?? []]);
-}
-
 function readTheme(): "light" | "dark" {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function pinElement(place: GeoPlace, look: LayerLook, onSelect: (place: GeoPlace) => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "geo-pin";
+  button.dataset.placeId = place.id;
+  button.style.setProperty("--pin", look.color);
+  button.title = place.name;
+  button.setAttribute("aria-label", place.name);
+  const filled = look.icon === "pin" || look.icon === "heart" || look.icon === "home";
+  button.innerHTML = `<span class="geo-pin-mark"><svg viewBox="0 0 24 24" fill="${filled ? "currentColor" : "none"}" stroke="currentColor" stroke-width="${filled ? 0 : 2}" stroke-linecap="round" stroke-linejoin="round"><path d="${iconPath(look.icon)}"></path></svg></span>`;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onSelect(place);
+  });
+  return button;
+}
+
+function restyleMap(map: import("maplibre-gl").Map, theme: "light" | "dark") {
+  if (theme === "dark") return;
+  for (const layer of map.getStyle().layers ?? []) {
+    const id = layer.id.toLowerCase();
+    try {
+      if (layer.type === "background") map.setPaintProperty(layer.id, "background-color", "#f4f1ea");
+      if (layer.type === "fill" && (id.includes("water") || id.includes("ocean"))) {
+        map.setPaintProperty(layer.id, "fill-color", "#7ec8ea");
+      }
+      if (layer.type === "fill" && (id.includes("park") || id.includes("grass") || id.includes("wood"))) {
+        map.setPaintProperty(layer.id, "fill-color", "#9fd67a");
+      }
+      if (layer.type === "fill" && id.includes("building")) {
+        map.setPaintProperty(layer.id, "fill-color", "#efe6d6");
+      }
+    } catch {
+      /* style layer without a solid color */
+    }
+  }
 }
 
 export function GeoMapCard({ map }: { map: GeoMapBlock }) {
@@ -70,55 +113,58 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
     [map.places],
   );
   const layers = useMemo(() => map.layers ?? [], [map.layers]);
-  const groups = useMemo(() => groupedPlaces(places), [places]);
+  const legend = useMemo(() => {
+    const names = layers.length ? layers.map((layer) => layer.name) : [...new Set(places.map((place) => place.layer))];
+    return names.filter(Boolean).map((name) => ({ name, ...layerLook(name) }));
+  }, [layers, places]);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<import("leaflet").Map | null>(null);
-  const [selected, setSelected] = useState<GeoPlace | null>(null);
+  const mapRef = useRef<import("maplibre-gl").Map | null>(null);
+  const pinRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const selected = places.find((place) => place.id === selectedId) ?? places[0] ?? null;
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !places.length) return;
     let cancelled = false;
     let observer: ResizeObserver | undefined;
+    const pins = pinRefs.current;
 
-    void import("leaflet").then((leaflet) => {
+    void import("maplibre-gl").then((mod) => {
       if (cancelled || !hostRef.current) return;
-      const L = leaflet.default ?? leaflet;
-      host.dataset.theme = readTheme();
-      const map = L.map(host, {
-        zoomControl: false,
-        attributionControl: true,
-        scrollWheelZoom: false,
+      const maplibre = mod.default;
+      const theme = readTheme();
+      host.dataset.theme = theme;
+      const map = new maplibre.Map({
+        container: host,
+        style: theme === "dark" ? DARK_STYLE : LIGHT_STYLE,
+        attributionControl: { compact: true },
+        scrollZoom: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        cooperativeGestures: false,
       });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        subdomains: "abc",
-        maxZoom: 19,
-      }).addTo(map);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      const bounds = L.latLngBounds([]);
+      const bounds = new maplibre.LngLatBounds();
+      pins.clear();
       for (const place of places) {
-        const color = layerColor(place.layer, layers, place.color);
-        const marker = L.marker([place.lat, place.lng], {
-          icon: L.divIcon({
-            className: "geo-pin",
-            html: `<span class="geo-pin-dot" style="background:${color}"></span>`,
-            iconSize: [22, 28],
-            iconAnchor: [11, 26],
-          }),
-          title: place.name,
-        }).addTo(map);
-        marker.on("click", () => setSelected(place));
-        bounds.extend([place.lat, place.lng]);
+        const look = layerLook(place.layer);
+        const element = pinElement(place, look, (next) => setSelectedId(next.id));
+        new maplibre.Marker({ element, anchor: "bottom" }).setLngLat([place.lng, place.lat]).addTo(map);
+        pins.set(place.id, element);
+        bounds.extend([place.lng, place.lat]);
       }
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
-      }
-      observer = new ResizeObserver(() => map.invalidateSize());
+      const fit = () => {
+        restyleMap(map, theme);
+        if (bounds.isEmpty()) return;
+        map.fitBounds(bounds, { padding: 36, maxZoom: 12.2, duration: 0 });
+      };
+      if (map.loaded()) fit();
+      else map.once("load", fit);
+      observer = new ResizeObserver(() => map.resize());
       observer.observe(host);
       mapRef.current = map;
-      setReady(true);
+      map.once("idle", () => setReady(true));
     });
 
     return () => {
@@ -126,22 +172,54 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
       observer?.disconnect();
       mapRef.current?.remove();
       mapRef.current = null;
+      pins.clear();
     };
-  }, [layers, places]);
+  }, [places]);
+
+  useEffect(() => {
+    for (const [id, pin] of pinRefs.current) {
+      pin.classList.toggle("is-active", selected?.id === id);
+    }
+  }, [selected, ready]);
 
   function focusPlace(place: GeoPlace) {
-    setSelected(place);
-    const map = mapRef.current;
-    if (map) map.flyTo([place.lat, place.lng], Math.max(map.getZoom(), 15), { duration: 0.4 });
+    setSelectedId(place.id);
+    mapRef.current?.easeTo({ center: [place.lng, place.lat], duration: 380 });
   }
+
+  function focusLayer(name: string) {
+    const match = places.find((place) => place.layer === name);
+    if (match) focusPlace(match);
+  }
+
+  function recenter() {
+    const map = mapRef.current;
+    if (!map || !places.length) return;
+    let minLng = places[0]!.lng;
+    let minLat = places[0]!.lat;
+    let maxLng = minLng;
+    let maxLat = minLat;
+    for (const place of places) {
+      minLng = Math.min(minLng, place.lng);
+      minLat = Math.min(minLat, place.lat);
+      maxLng = Math.max(maxLng, place.lng);
+      maxLat = Math.max(maxLat, place.lat);
+    }
+    map.fitBounds(
+      [
+        [minLng, minLat],
+        [maxLng, maxLat],
+      ],
+      { padding: 36, maxZoom: 12.2, duration: 400 },
+    );
+  }
+
+  const selectedLook = selected ? layerLook(selected.layer) : null;
 
   if (!places.length) {
     return (
       <section className="geo-card">
-        <div className="geo-card-head">
-          <span className="geo-card-kicker">Карта</span>
-          <h3>{map.title || "Места на карте"}</h3>
-        </div>
+        <h3 className="geo-card-title">Карта города</h3>
         <p className="geo-card-empty">Нажмите «Обновить», чтобы загрузить точки с Google Maps.</p>
       </section>
     );
@@ -149,56 +227,52 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
 
   return (
     <section className="geo-card">
+      <h3 className="geo-card-title">Карта города</h3>
       <div className="geo-map-frame">
-        <div ref={hostRef} className="geo-map-canvas" role="img" aria-label={map.title || "Карта"} />
+        <div ref={hostRef} className="geo-map-canvas" role="img" aria-label={map.title || "Карта города"} />
+        <button type="button" className="geo-compass" aria-label="Показать всю карту" onClick={recenter}>
+          <Icon name="plane" />
+        </button>
         {!ready ? <div className="geo-map-pending">Открываем карту</div> : null}
       </div>
-      <div className="geo-place-list">
-        {groups.map(([layer, items]) => (
-          <div key={layer} className="geo-place-group">
-            <p className="geo-place-layer">
-              <span className="geo-place-dot" style={{ background: layerColor(layer, layers) }} />
-              {layer}
-              <span className="geo-place-count">{items.length}</span>
-            </p>
-            {items.map((place) => (
-              <button
-                key={place.id}
-                type="button"
-                className={`geo-place-row ${selected?.id === place.id ? "is-active" : ""}`}
-                onClick={() => focusPlace(place)}
-              >
-                <span>{place.name}</span>
-                <Icon name="pin" />
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-      {selected ? (
-        <div className="geo-layer" role="dialog" aria-modal="true" aria-label={selected.name}>
-          <button type="button" className="geo-backdrop" aria-label="Закрыть" onClick={() => setSelected(null)} />
-          <div className="geo-sheet">
-            <div className="geo-sheet-head">
-              <div>
-                <p className="geo-sheet-layer">{selected.layer}</p>
-                <h2>{selected.name}</h2>
-              </div>
-              <button type="button" className="toc-sheet-close" onClick={() => setSelected(null)}>
-                Закрыть
-              </button>
-            </div>
-            <div className="geo-sheet-actions">
-              <a className="btn" href={googlePlaceUrl(selected)} target="_blank" rel="noreferrer">
-                Открыть в Google Maps
-              </a>
-              <a className="btn btn-secondary" href={googleDirectionsUrl(selected)} target="_blank" rel="noreferrer">
-                Маршрут
-              </a>
-            </div>
-          </div>
+      {legend.length ? (
+        <div className="geo-legend" role="list">
+          {legend.map((item) => (
+            <button
+              key={item.name}
+              type="button"
+              className={`geo-legend-item ${selected?.layer === item.name ? "is-active" : ""}`}
+              onClick={() => focusLayer(item.name)}
+            >
+              <span className="geo-legend-icon" style={{ color: item.color }}>
+                <Icon name={item.icon} />
+              </span>
+              {item.short}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {selected && selectedLook ? (
+        <div className="geo-spot">
+          <a className="geo-spot-main" href={googlePlaceUrl(selected)} target="_blank" rel="noreferrer">
+            <span className="geo-spot-badge" style={{ background: itemWash(selectedLook.color), color: selectedLook.color }}>
+              <Icon name={selectedLook.icon} />
+            </span>
+            <span className="geo-spot-copy">
+              <strong>{selected.name}</strong>
+              <em>{selected.layer}</em>
+            </span>
+          </a>
+          <a className="geo-spot-route" href={googleDirectionsUrl(selected)} target="_blank" rel="noreferrer">
+            <Icon name="plane" />
+            Построить маршрут
+          </a>
         </div>
       ) : null}
     </section>
   );
+}
+
+function itemWash(color: string): string {
+  return `color-mix(in srgb, ${color} 16%, var(--card))`;
 }
