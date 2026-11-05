@@ -336,6 +336,24 @@ def render_page_pdf(
             _draw_caption_box(pdf, left, y, width, 28, f"Видео · {label}", regular, extras)
             y -= 36
             continue
+        if kind == "geo_map":
+            numbered = 0
+            map_title = _clean(str(block.get("title") or "Карта"))
+            places_raw = block.get("places")
+            places = places_raw if isinstance(places_raw, list) else []
+            names = [
+                _clean(str(item.get("name") or ""))
+                for item in places
+                if isinstance(item, dict) and item.get("name")
+            ]
+            preview = ", ".join(names[:8])
+            extra = f" и ещё {len(names) - 8}" if len(names) > 8 else ""
+            label = f"Карта · {map_title}"
+            if preview:
+                label = f"{label}: {preview}{extra}"
+            _draw_caption_box(pdf, left, y, width, 36, label, regular, extras)
+            y -= 44
+            continue
         if kind == "table":
             numbered = 0
             rows_raw = block.get("rows") or []

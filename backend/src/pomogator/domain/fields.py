@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
 
+from pomogator.domain.geo_map import has_geo_map_tags, iter_geo_map_spans
 from pomogator.domain.nav import has_nav_tags, iter_nav_tag_spans, resolve_nav_in_document
 
 # Legacy: {pmg.field.input({24,placeholder})}  and plain: {pmg.field.input(24, placeholder)}
@@ -102,6 +103,8 @@ def _merge_adjacent_text(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _field_spans(text: str) -> list[tuple[int, int, str, dict[str, Any]]]:
     spans: list[tuple[int, int, str, dict[str, Any]]] = []
+    for start, end, ref in iter_geo_map_spans(text):
+        spans.append((start, end, "geo_map", {"engine": ref.engine, "map_id": ref.map_id}))
     for match in _FIELD_PATTERN.finditer(text):
         if match.group(1) is not None or match.group(3) is not None:
             width_raw = match.group(1) if match.group(1) is not None else match.group(3)
@@ -118,9 +121,7 @@ def _field_spans(text: str) -> list[tuple[int, int, str, dict[str, Any]]]:
             )
         else:
             default_raw = match.group(5) or ""
-            spans.append(
-                (match.start(), match.end(), "checkbox", {"default_raw": default_raw})
-            )
+            spans.append((match.start(), match.end(), "checkbox", {"default_raw": default_raw}))
     return spans
 
 
@@ -178,6 +179,12 @@ def _emit_markup_run(
         return _text_run(payload["text"], base, nav_goto=payload["label"])
     if kind == "nav_gotopage":
         return _text_run(payload["text"], base, nav_gotopage=payload["label"])
+    if kind == "geo_map":
+        return {
+            "type": "geo_map",
+            "engine": payload["engine"],
+            "map_id": payload["map_id"],
+        }
     return _text_run("", base)
 
 
@@ -225,7 +232,12 @@ def expand_rich_text(
         return []
 
     joined = "".join(text for text, _ in segments)
-    if not (_INPUT_TAG.search(joined) or _CB_TAG.search(joined) or has_nav_tags(joined)):
+    if not (
+        _INPUT_TAG.search(joined)
+        or _CB_TAG.search(joined)
+        or has_nav_tags(joined)
+        or has_geo_map_tags(joined)
+    ):
         return _merge_adjacent_text([_text_run(text, part) for text, part in segments])
 
     bases: list[dict[str, Any]] = []
@@ -286,11 +298,26 @@ def annotate_document_fields(
 
     for raw in document:
         block = dict(raw)
+        if block.get("type") == "geo_map":
+            output.append(block)
+            continue
         rich = block.get("rich_text")
         if isinstance(rich, list):
             runs = expand_rich_text(rich, counters)
             block["runs"] = runs
             block["rich_text"] = _register_runs(runs, specs)
+            geo = _solo_geo_map(runs)
+            if geo is not None:
+                block = {
+                    "type": "geo_map",
+                    "engine": geo["engine"],
+                    "map_id": geo["map_id"],
+                    "title": "",
+                    "description": "",
+                    "source_url": "",
+                    "layers": [],
+                    "places": [],
+                }
 
         if block.get("type") == "table" and isinstance(block.get("rows"), list):
             new_rows: list[list[dict[str, Any]]] = []
@@ -312,6 +339,18 @@ def annotate_document_fields(
 
     resolve_nav_in_document(output, page_nav or {})
     return output, specs
+
+
+def _solo_geo_map(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    maps = [run for run in runs if run.get("type") == "geo_map"]
+    extras = [
+        run
+        for run in runs
+        if run.get("type") not in {"geo_map", "nav_label"} and str(run.get("text", "")).strip()
+    ]
+    if len(maps) == 1 and not extras:
+        return maps[0]
+    return None
 
 
 def known_field_keys(document: list[dict[str, Any]]) -> set[str]:

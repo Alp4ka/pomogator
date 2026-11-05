@@ -5,6 +5,7 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from pomogator.application.geo_maps import hydrate_geo_maps
 from pomogator.config import CountrySource
 from pomogator.domain.links import remap_internal_links
 from pomogator.domain.sync_errors import user_facing_sync_error
@@ -15,6 +16,7 @@ from pomogator.infrastructure.db.models import (
     PageModel,
     SyncRunModel,
 )
+from pomogator.infrastructure.geo.google_mymaps import GoogleMyMapsClient
 from pomogator.infrastructure.notion.client import ImportedPage, NotionClient, PageSnapshot
 
 
@@ -62,8 +64,10 @@ class SyncCountry:
                 delete(PageImageModel).where(PageImageModel.page_id.in_(page_ids))
             )
             known: dict[str, UUID] = {}
+            maps = GoogleMyMapsClient(self.notion.http)
 
             async def save(node: ImportedPage, parent: UUID | None, position: int) -> None:
+                node.document = await hydrate_geo_maps(list(node.document), maps)
                 page = await self.session.scalar(
                     select(PageModel).where(
                         PageModel.country_id == country.id,
@@ -188,8 +192,7 @@ def build_page_snapshots(pages: list[PageModel]) -> dict[str, PageSnapshot]:
             last_edited_at=edited,
             document=list(page.document or []),
             child_ids=tuple(
-                child.notion_page_id.replace("-", "").lower()
-                for child in children.get(page.id, [])
+                child.notion_page_id.replace("-", "").lower() for child in children.get(page.id, [])
             ),
             database_ids=tuple(
                 str(item).replace("-", "").lower()

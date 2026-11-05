@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 
+import { GeoMapCard, type GeoLayer, type GeoPlace } from "./geo-map";
 import { YouTubeEmbed, collectYouTubeIds } from "./youtube-embed";
 import { parseYouTubeVideoId } from "./youtube";
 
@@ -19,7 +20,8 @@ export type FieldRun =
       default?: string;
     }
   | { type: "checkbox"; key: string; default: string }
-  | { type: "nav_label"; label: string };
+  | { type: "nav_label"; label: string }
+  | { type: "geo_map"; engine: string; map_id: string };
 
 export type TableCell =
   | Rich[]
@@ -45,6 +47,13 @@ export type Block = {
   rows?: TableCell[][];
   has_column_header?: boolean;
   has_row_header?: boolean;
+  engine?: string;
+  map_id?: string;
+  title?: string;
+  description?: string;
+  source_url?: string;
+  layers?: GeoLayer[];
+  places?: GeoPlace[];
 };
 
 export type OutlineItem = { id: string; level: number; title: string };
@@ -413,6 +422,9 @@ export function FieldRuns({
           const node = wrapLink(annotatedText(run), run.link, onInternal);
           return <React.Fragment key={index}>{node}</React.Fragment>;
         }
+        if (run.type === "geo_map") {
+          return <GeoMapCard key={`${run.engine}-${run.map_id}-${index}`} map={run} />;
+        }
         if (run.type === "input") {
           return (
             <InlineInput
@@ -546,6 +558,22 @@ function renderContentBlock(
           </tbody>
         </table>
       </div>
+    );
+  }
+  if (block.type === "geo_map") {
+    return (
+      <GeoMapCard
+        key={groupIndex}
+        map={{
+          engine: block.engine || "google",
+          map_id: block.map_id || "",
+          title: block.title,
+          description: block.description,
+          source_url: block.source_url,
+          layers: block.layers,
+          places: block.places,
+        }}
+      />
     );
   }
   if (block.type === "divider") return <hr key={groupIndex} className="notion-divider" />;

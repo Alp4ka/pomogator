@@ -20,6 +20,22 @@ describe("content routing", () => {
   });
 });
 
+describe("geo map block", () => {
+  it("keeps a geo_map block as its own render group", () => {
+    const groups = groupBlocks([
+      { type: "paragraph", rich_text: [{ text: "intro" }] },
+      {
+        type: "geo_map",
+        engine: "google",
+        map_id: "mid-1",
+        places: [{ id: "1", name: "Пляж", lat: -7.1, lng: -34.8, layer: "Пляжи" }],
+      },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[1]).toMatchObject({ kind: "block", block: { type: "geo_map", map_id: "mid-1" } });
+  });
+});
+
 describe("groupBlocks", () => {
   it("wraps consecutive list items into a single list group", () => {
     const blocks: Block[] = [

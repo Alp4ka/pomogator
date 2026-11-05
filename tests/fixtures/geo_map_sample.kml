@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Полезные места</name>
+    <description>Тестовая карта</description>
+    <Style id="icon-blue-normal">
+      <IconStyle><color>ffd18802</color></IconStyle>
+    </Style>
+    <StyleMap id="icon-blue">
+      <Pair><key>normal</key><styleUrl>#icon-blue-normal</styleUrl></Pair>
+    </StyleMap>
+    <Folder>
+      <name>Медицина</name>
+      <Placemark>
+        <name>Hospital Nova Esperança</name>
+        <styleUrl>#icon-blue</styleUrl>
+        <Point><coordinates>-34.874236,-7.130032,0</coordinates></Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Пляжи</name>
+      <Placemark>
+        <name>Tambaú Beach</name>
+        <Point><coordinates>-34.821650,-7.115155,0</coordinates></Point>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>

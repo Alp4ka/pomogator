@@ -74,6 +74,35 @@ const HUB_BLOCKS: Block[] = [
     type: "bulleted_list_item",
     rich_text: [{ text: "Зелёный и экологичный город — чистый воздух, парки и близость к природе" }],
   },
+  { type: "heading_2", rich_text: [{ text: "Карта" }] },
+  {
+    type: "geo_map",
+    engine: "google",
+    map_id: "1gI16mMa1iau2Qle6FOXbKf8kDBU3f6Q",
+    title: "Полезные места в Жуан-Песоа",
+    layers: [
+      { name: "Медицина и здоровье", color: "#0288D1", count: 1 },
+      { name: "Парки, пляжи и прогулки", color: "#FFD600", count: 1 },
+    ],
+    places: [
+      {
+        id: "hne",
+        name: "HNE - Hospital Nova Esperança",
+        lat: -7.130032,
+        lng: -34.874236,
+        layer: "Медицина и здоровье",
+        color: "#0288D1",
+      },
+      {
+        id: "tambau",
+        name: "Tambaú Beach",
+        lat: -7.115155,
+        lng: -34.82165,
+        layer: "Парки, пляжи и прогулки",
+        color: "#FFD600",
+      },
+    ],
+  },
   { type: "heading_2", rich_text: [{ text: "Климат" }] },
   {
     type: "callout",
