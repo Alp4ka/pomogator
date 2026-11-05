@@ -937,6 +937,47 @@ button {
 .callout-title { font-weight: 750; }
 .callout-sub { color: var(--muted); font-size: 13px; overflow-wrap: break-word; }
 
+:is(.notion-callout, .feature-card).notion-color-default { --notion-callout-bg: var(--wash); }
+:is(.notion-callout, .feature-card).notion-color-gray { --notion-callout-bg: #e7e6e3; }
+:is(.notion-callout, .feature-card).notion-color-brown { --notion-callout-bg: #eee0da; }
+:is(.notion-callout, .feature-card).notion-color-orange { --notion-callout-bg: #fadec9; }
+:is(.notion-callout, .feature-card).notion-color-yellow { --notion-callout-bg: #fdecc8; }
+:is(.notion-callout, .feature-card).notion-color-green { --notion-callout-bg: #dbeddb; }
+:is(.notion-callout, .feature-card).notion-color-blue { --notion-callout-bg: #d3e5ef; }
+:is(.notion-callout, .feature-card).notion-color-purple { --notion-callout-bg: #e8deee; }
+:is(.notion-callout, .feature-card).notion-color-pink { --notion-callout-bg: #f5e0e9; }
+:is(.notion-callout, .feature-card).notion-color-red { --notion-callout-bg: #ffe2dd; }
+:is(.notion-callout, .feature-card)[class*="notion-color-"] {
+  background: var(--notion-callout-bg);
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-gray {
+  --notion-callout-bg: color-mix(in srgb, #9b9a97 24%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-brown {
+  --notion-callout-bg: color-mix(in srgb, #937264 28%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-orange {
+  --notion-callout-bg: color-mix(in srgb, #d9730d 25%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-yellow {
+  --notion-callout-bg: color-mix(in srgb, #cb912f 26%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-green {
+  --notion-callout-bg: color-mix(in srgb, #448361 28%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-blue {
+  --notion-callout-bg: color-mix(in srgb, #337ea9 28%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-purple {
+  --notion-callout-bg: color-mix(in srgb, #9065b0 28%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-pink {
+  --notion-callout-bg: color-mix(in srgb, #c14c8a 25%, var(--card));
+}
+[data-theme="dark"] :is(.notion-callout, .feature-card).notion-color-red {
+  --notion-callout-bg: color-mix(in srgb, #d44c47 27%, var(--card));
+}
+
 .notion-quote {
   margin: 0.8em 0;
   padding: 12px 14px;

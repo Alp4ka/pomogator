@@ -107,6 +107,60 @@ async def test_import_refetches_when_last_edited_changes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_import_refetches_legacy_callouts_and_keeps_notion_color(monkeypatch):
+    calls: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path.endswith(f"/pages/{ROOT}"):
+            return httpx.Response(200, json=_page_json(ROOT, "Brazil"), request=request)
+        if "/blocks/" in request.url.path:
+            return httpx.Response(
+                200,
+                json=_blocks(
+                    {
+                        "id": "callout-1",
+                        "type": "callout",
+                        "has_children": False,
+                        "callout": {
+                            "rich_text": [{"plain_text": "Important", "annotations": {}}],
+                            "icon": {"type": "emoji", "emoji": "💡"},
+                            "color": "yellow_background",
+                        },
+                    }
+                ),
+                request=request,
+            )
+        raise AssertionError(f"unexpected {request.url.path}")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = NotionClient("token", http=http, min_interval_seconds=0.01)
+        monkeypatch.setattr("pomogator.infrastructure.notion.client.asyncio.sleep", _no_sleep)
+        imported = await client.import_country(
+            ROOT,
+            "brazil",
+            "🌍",
+            snapshots={
+                ROOT: PageSnapshot(
+                    last_edited_at=EDITED,
+                    document=[
+                        {
+                            "type": "callout",
+                            "icon": "💡",
+                            "rich_text": [{"text": "cached"}],
+                        }
+                    ],
+                )
+            },
+        )
+
+    assert imported.root.reused is False
+    assert imported.root.document[0]["color"] == "yellow_background"
+    assert any("/blocks/" in path for path in calls)
+
+
+@pytest.mark.asyncio
 async def test_import_walks_snapshot_children_and_databases(monkeypatch):
     calls: list[str] = []
 

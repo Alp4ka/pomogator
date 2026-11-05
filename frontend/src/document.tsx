@@ -40,6 +40,7 @@ export type Block = {
   checked?: boolean;
   language?: string;
   icon?: string;
+  color?: string;
   url?: string;
   video_id?: string;
   anchor_id?: string;
@@ -77,6 +78,35 @@ export type DocSection = {
 
 export function plainRichText(items: Rich[] | undefined): string {
   return (items ?? []).map((item) => item.text).join("").trim();
+}
+
+const NOTION_CALLOUT_COLORS = new Set([
+  "default",
+  "gray",
+  "brown",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+  "red",
+  "gray_background",
+  "brown_background",
+  "orange_background",
+  "yellow_background",
+  "green_background",
+  "blue_background",
+  "purple_background",
+  "pink_background",
+  "red_background",
+]);
+
+function calloutColorClass(color: string | undefined): string {
+  const normalized = color?.toLowerCase() ?? "default";
+  return NOTION_CALLOUT_COLORS.has(normalized)
+    ? `notion-color-${normalized.replace("_background", "")}`
+    : "notion-color-default";
 }
 
 export function buildOutline(blocks: Block[]): OutlineItem[] {
@@ -588,7 +618,10 @@ function renderContentBlock(
     const split = splitCalloutText(block.rich_text);
     return (
       <BlockWithOptionalVideos key={groupIndex} items={block.rich_text}>
-        <aside id={blockDomId(block)} className="notion-callout">
+        <aside
+          id={blockDomId(block)}
+          className={`notion-callout ${calloutColorClass(block.color)}`}
+        >
           <span className="callout-icon" aria-hidden>
             {block.icon || "💡"}
           </span>
@@ -663,7 +696,7 @@ function CalloutGrid({
           <aside
             key={index}
             id={blockDomId(item)}
-            className={`feature-card tone-${(index % 4) + 1}`}
+            className={`feature-card ${calloutColorClass(item.color)}`}
           >
             <span className="icon-chip" aria-hidden>
               {item.icon || "•"}

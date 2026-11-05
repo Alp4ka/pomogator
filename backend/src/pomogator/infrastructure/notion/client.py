@@ -363,6 +363,7 @@ class NotionClient:
                         item["language"] = value.get("language", "plain text")
                     if kind == "callout":
                         item["icon"] = (value.get("icon") or {}).get("emoji")
+                        item["color"] = value.get("color", "default")
                     document.append(item)
             if block.get("has_children") and kind not in {"table", "table_row"}:
                 document.extend(await self._blocks_document(block["id"]))
@@ -425,7 +426,12 @@ class NotionClient:
         edited = self._last_edited_at(meta)
         nid = self._norm_page_id(page_id)
         snap = known.get(nid)
-        if snap is not None and edited and snap.last_edited_at == edited:
+        if (
+            snap is not None
+            and edited
+            and snap.last_edited_at == edited
+            and self._snapshot_supports_callout_colors(snap.document)
+        ):
             seen = {nid}
             children = await self._import_children(list(snap.child_ids), level, known, seen)
             extra_ids: list[str] = []
@@ -493,6 +499,7 @@ class NotionClient:
                     item["language"] = value.get("language", "plain text")
                 if kind == "callout":
                     item["icon"] = (value.get("icon") or {}).get("emoji")
+                    item["color"] = value.get("color", "default")
                 document.append(item)
             if block.get("has_children") and kind not in {"child_page", "table"}:
                 nested = await self._blocks_document(block["id"])
@@ -508,6 +515,10 @@ class NotionClient:
             database_ids=database_ids,
             icon_emoji=self._icon_emoji(meta),
         )
+
+    @staticmethod
+    def _snapshot_supports_callout_colors(document: list[dict[str, Any]]) -> bool:
+        return all(block.get("type") != "callout" or "color" in block for block in document)
 
     async def import_country(
         self,
