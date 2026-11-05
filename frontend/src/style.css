@@ -1095,29 +1095,17 @@ figcaption {
 }
 .geo-map-frame {
   position: relative;
-  height: min(48vw, 210px);
+  height: min(52vw, 240px);
   overflow: hidden;
   border-radius: 22px;
-  background: #e7f2ea;
+  background: #e8eef2;
 }
 html[data-theme="dark"] .geo-map-frame { background: #1c2430; }
-.geo-map-canvas {
+.geo-map-frame-embed {
+  display: block;
   width: 100%;
   height: 100%;
-}
-.geo-map-canvas.maplibregl-map,
-.geo-map-canvas .maplibregl-map,
-.geo-map-canvas .maplibregl-canvas,
-.geo-map-canvas .maplibregl-canvas-container {
-  width: 100%;
-  height: 100%;
-}
-.geo-map-canvas .maplibregl-canvas {
-  filter: saturate(1.18) contrast(1.04);
-}
-.geo-map-canvas .maplibregl-ctrl-attrib {
-  font-size: 9px;
-  background: color-mix(in srgb, #fff 78%, transparent);
+  border: 0;
 }
 .geo-compass {
   position: absolute;
@@ -1136,49 +1124,6 @@ html[data-theme="dark"] .geo-map-frame { background: #1c2430; }
   box-shadow: var(--shadow);
 }
 .geo-compass svg { width: 16px; height: 16px; }
-.geo-map-pending {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #2f4a36;
-  font-size: 13px;
-  font-weight: 650;
-  pointer-events: none;
-}
-.geo-pin {
-  display: grid;
-  place-items: end center;
-  width: 28px;
-  height: 34px;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-.geo-pin-mark {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 2px solid #fff;
-  border-radius: 50% 50% 50% 3px;
-  background: var(--pin, #e24b4b);
-  color: #fff;
-  box-shadow: 0 6px 14px color-mix(in srgb, #000 22%, transparent);
-  transform: rotate(-45deg);
-}
-.geo-pin-mark svg {
-  width: 11px;
-  height: 11px;
-  transform: rotate(45deg);
-}
-.geo-pin.is-active .geo-pin-mark {
-  width: 26px;
-  height: 26px;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pin) 28%, transparent), 0 8px 16px color-mix(in srgb, #000 22%, transparent);
-}
-.geo-pin.is-active .geo-pin-mark svg { width: 13px; height: 13px; }
 .geo-legend {
   display: flex;
   flex-wrap: wrap;
