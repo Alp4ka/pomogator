@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon, pickIcon, type IconName } from "./icons";
 
@@ -62,13 +62,8 @@ function googleDirectionsUrl(place: GeoPlace): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${place.lat.toFixed(6)},${place.lng.toFixed(6)}`;
 }
 
-function googleMyMapsEmbed(mapId: string, place?: GeoPlace | null): string {
-  const params = new URLSearchParams({
-    mid: mapId,
-    ehbc: "FFFFFF",
-    z: place ? "16" : "13",
-  });
-  if (place) params.set("ll", `${place.lat},${place.lng}`);
+function googleMyMapsEmbed(mapId: string): string {
+  const params = new URLSearchParams({ mid: mapId });
   return `https://www.google.com/maps/d/embed?${params.toString()}`;
 }
 
@@ -87,16 +82,26 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
     return source.filter(Boolean).map((name) => ({ name, ...layerLook(name) }));
   }, [map.layers, places]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [overview, setOverview] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
+  const readyTimer = useRef<number | null>(null);
   const selected = places.find((place) => place.id === selectedId) ?? places[0] ?? null;
   const selectedLook = selected ? layerLook(selected.layer) : null;
-  const embedSrc = map.map_id
-    ? googleMyMapsEmbed(map.map_id, overview ? null : selected)
-    : "";
+  const embedSrc = map.map_id ? googleMyMapsEmbed(map.map_id) : "";
+
+  useEffect(
+    () => () => {
+      if (readyTimer.current !== null) window.clearTimeout(readyTimer.current);
+    },
+    [],
+  );
 
   function focusPlace(place: GeoPlace) {
     setSelectedId(place.id);
-    setOverview(false);
+  }
+
+  function markMapLoaded() {
+    if (readyTimer.current !== null) window.clearTimeout(readyTimer.current);
+    readyTimer.current = window.setTimeout(() => setMapReady(true), 4500);
   }
 
   if (!map.map_id && !places.length) {
@@ -119,12 +124,9 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
             title={map.title || "Карта города"}
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
+            onLoad={markMapLoaded}
           />
-          {!overview && selected ? (
-            <button type="button" className="geo-compass" aria-label="Показать всю карту" onClick={() => setOverview(true)}>
-              <Icon name="plane" />
-            </button>
-          ) : null}
+          {!mapReady ? <div className="geo-map-pending">Загружаем карту и точки…</div> : null}
         </div>
       ) : (
         <p className="geo-card-empty">Нажмите «Обновить», чтобы загрузить карту из Google Maps.</p>
