@@ -219,6 +219,24 @@ def split_callout_text(items: list[dict[str, Any]] | None) -> tuple[str, str]:
     return full, ""
 
 
+def _callout_runs(block: dict[str, Any]) -> list[dict[str, Any]]:
+    direct = _block_runs(block)
+    if direct:
+        return direct
+    result: list[dict[str, Any]] = []
+    children = block.get("children")
+    if not isinstance(children, list):
+        return result
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        runs = _block_runs(child)
+        if result and runs:
+            result.append({"text": " "})
+        result.extend(runs)
+    return result
+
+
 def render_page_pdf(
     *,
     title: str,
@@ -394,8 +412,9 @@ def render_page_pdf(
         if kind == "callout":
             numbered = 0
             icon = str(block.get("icon") or "•").strip() or "•"
-            title_text, body_text = split_callout_text(parts)
-            title_text = title_text or text
+            callout_parts = _callout_runs(block)
+            title_text, body_text = split_callout_text(callout_parts)
+            title_text = title_text or _plain(callout_parts, field_values)
             y = _draw_callout(
                 pdf,
                 x=left,

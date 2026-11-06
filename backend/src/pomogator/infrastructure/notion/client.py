@@ -364,9 +364,14 @@ class NotionClient:
                     if kind == "callout":
                         item["icon"] = (value.get("icon") or {}).get("emoji")
                         item["color"] = value.get("color", "default")
+                        item["children"] = []
                     document.append(item)
             if block.get("has_children") and kind not in {"table", "table_row"}:
-                document.extend(await self._blocks_document(block["id"]))
+                nested = await self._blocks_document(block["id"])
+                if kind == "callout":
+                    item["children"] = nested
+                else:
+                    document.extend(nested)
         return document
 
     @staticmethod
@@ -430,7 +435,7 @@ class NotionClient:
             snap is not None
             and edited
             and snap.last_edited_at == edited
-            and self._snapshot_supports_callout_colors(snap.document)
+            and self._snapshot_supports_callout_structure(snap.document)
         ):
             seen = {nid}
             children = await self._import_children(list(snap.child_ids), level, known, seen)
@@ -500,10 +505,14 @@ class NotionClient:
                 if kind == "callout":
                     item["icon"] = (value.get("icon") or {}).get("emoji")
                     item["color"] = value.get("color", "default")
+                    item["children"] = []
                 document.append(item)
             if block.get("has_children") and kind not in {"child_page", "table"}:
                 nested = await self._blocks_document(block["id"])
-                document.extend(nested)
+                if kind == "callout":
+                    item["children"] = nested
+                else:
+                    document.extend(nested)
         return ImportedPage(
             nid,
             title,
@@ -517,8 +526,12 @@ class NotionClient:
         )
 
     @staticmethod
-    def _snapshot_supports_callout_colors(document: list[dict[str, Any]]) -> bool:
-        return all(block.get("type") != "callout" or "color" in block for block in document)
+    def _snapshot_supports_callout_structure(document: list[dict[str, Any]]) -> bool:
+        return all(
+            block.get("type") != "callout"
+            or ("color" in block and isinstance(block.get("children"), list))
+            for block in document
+        )
 
     async def import_country(
         self,

@@ -83,10 +83,6 @@ function layerLook(name: string): LayerLook {
   return { icon, color: FALLBACK_COLORS[0] ?? "#e24b4b", short: name };
 }
 
-function googlePlaceUrl(place: GeoPlace): string {
-  return `https://www.google.com/maps/search/?api=1&query=${place.lat.toFixed(6)},${place.lng.toFixed(6)}`;
-}
-
 function googleDirectionsUrl(place: GeoPlace): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${place.lat.toFixed(6)},${place.lng.toFixed(6)}`;
 }
@@ -107,16 +103,22 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
   const legend = useMemo(() => {
     const names = (map.layers ?? []).map((layer) => layer.name);
     const source = names.length ? names : [...new Set(places.map((place) => place.layer))];
-    return source.filter(Boolean).map((name) => ({ name, ...layerLook(name) }));
+    return source.filter(Boolean).map((name) => ({
+      name,
+      count: places.filter((place) => place.layer === name).length,
+      ...layerLook(name),
+    }));
   }, [map.layers, places]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeLayer, setActiveLayer] = useState<string | null>(() => legend[0]?.name ?? null);
   const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error" | "unconfigured">(
     GOOGLE_MAPS_API_KEY ? "loading" : "unconfigured",
   );
   const mapHostRef = useRef<HTMLDivElement | null>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
-  const selected = places.find((place) => place.id === selectedId) ?? places[0] ?? null;
-  const selectedLook = selected ? layerLook(selected.layer) : null;
+  const visiblePlaces = activeLayer
+    ? places.filter((place) => place.layer === activeLayer)
+    : places;
   const externalMapUrl = map.source_url || googleMyMapsUrl(map.map_id);
 
   useEffect(() => {
@@ -161,7 +163,10 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
               strokeWeight: 2,
             },
           });
-          marker.addListener("click", () => setSelectedId(place.id));
+          marker.addListener("click", () => {
+            setSelectedId(place.id);
+            setActiveLayer(place.layer);
+          });
           markers.push(marker);
           bounds.extend(marker.getPosition()!);
         }
@@ -189,8 +194,27 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
 
   function focusPlace(place: GeoPlace) {
     setSelectedId(place.id);
+    setActiveLayer(place.layer);
     googleMapRef.current?.panTo({ lat: place.lat, lng: place.lng });
     googleMapRef.current?.setZoom(15);
+  }
+
+  function focusLayer(layer: string) {
+    setActiveLayer(layer);
+    const matches = places.filter((place) => place.layer === layer);
+    if (!matches.length) return;
+    setSelectedId(matches[0]!.id);
+    const maps = googleGlobal();
+    const instance = googleMapRef.current;
+    if (!maps || !instance) return;
+    const bounds = new maps.maps.LatLngBounds();
+    for (const place of matches) bounds.extend({ lat: place.lat, lng: place.lng });
+    if (matches.length === 1) {
+      instance.panTo({ lat: matches[0]!.lat, lng: matches[0]!.lng });
+      instance.setZoom(15);
+    } else {
+      instance.fitBounds(bounds, 42);
+    }
   }
 
   if (!map.map_id && !places.length) {
@@ -228,35 +252,45 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
             <button
               key={item.name}
               type="button"
-              className={`geo-legend-item ${selected?.layer === item.name ? "is-active" : ""}`}
-              onClick={() => {
-                const match = places.find((place) => place.layer === item.name);
-                if (match) focusPlace(match);
-              }}
+              className={`geo-legend-item ${activeLayer === item.name ? "is-active" : ""}`}
+              onClick={() => focusLayer(item.name)}
             >
               <span className="geo-legend-icon" style={{ color: item.color }}>
                 <Icon name={item.icon} />
               </span>
-              {item.short}
+              <span>{item.short}</span>
+              <small>{item.count}</small>
             </button>
           ))}
         </div>
       ) : null}
-      {selected && selectedLook ? (
-        <div className="geo-spot">
-          <a className="geo-spot-main" href={googlePlaceUrl(selected)} target="_blank" rel="noreferrer">
-            <span className="geo-spot-badge" style={{ background: itemWash(selectedLook.color), color: selectedLook.color }}>
-              <Icon name={selectedLook.icon} />
-            </span>
-            <span className="geo-spot-copy">
-              <strong>{selected.name}</strong>
-              <em>{selected.layer}</em>
-            </span>
-          </a>
-          <a className="geo-spot-route" href={googleDirectionsUrl(selected)} target="_blank" rel="noreferrer">
-            <Icon name="plane" />
-            Построить маршрут
-          </a>
+      {visiblePlaces.length ? (
+        <div className="geo-place-list">
+          {visiblePlaces.map((place) => {
+            const look = layerLook(place.layer);
+            return (
+              <article key={place.id} className={`geo-place-row ${selectedId === place.id ? "is-active" : ""}`}>
+                <button type="button" className="geo-place-main" onClick={() => focusPlace(place)}>
+                  <span className="geo-spot-badge" style={{ background: itemWash(look.color), color: look.color }}>
+                    <Icon name={look.icon} />
+                  </span>
+                  <span className="geo-spot-copy">
+                    <strong>{place.name}</strong>
+                    <em>Показать на карте</em>
+                  </span>
+                </button>
+                <a
+                  className="geo-spot-route"
+                  href={googleDirectionsUrl(place)}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Построить маршрут: ${place.name}`}
+                >
+                  <Icon name="plane" />
+                </a>
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </section>

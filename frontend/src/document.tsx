@@ -55,6 +55,7 @@ export type Block = {
   source_url?: string;
   layers?: GeoLayer[];
   places?: GeoPlace[];
+  children?: Block[];
 };
 
 export type OutlineItem = { id: string; level: number; title: string };
@@ -252,6 +253,7 @@ export function splitCalloutText(items: Rich[] | undefined): { title: string; bo
 }
 
 function isFeatureCallout(block: Block): boolean {
+  if (block.children?.length) return false;
   const split = splitCalloutText(block.rich_text);
   return split.title.length <= 28 && split.body.length <= 42;
 }
@@ -631,9 +633,26 @@ function renderContentBlock(
                 <strong className="callout-title">{split.title}</strong>
                 <span className="callout-sub">{split.body}</span>
               </>
-            ) : (
+            ) : block.rich_text?.length ? (
               rich(block)
-            )}
+            ) : null}
+            {block.children?.length ? (
+              <div className="callout-children">
+                {block.children.map((child, childIndex) =>
+                  renderContentBlock(
+                    child,
+                    childIndex,
+                    imageUrls,
+                    flag,
+                    onInternal,
+                    rich,
+                    fields,
+                    onFieldChange,
+                    onFieldCommit,
+                  ),
+                )}
+              </div>
+            ) : null}
           </div>
         </aside>
       </BlockWithOptionalVideos>
@@ -832,6 +851,13 @@ export function DocumentBody({
         }
         const onlyGrid =
           section.groups.length === 1 && section.groups[0]?.kind === "callout_grid";
+        const onlyGeoMap =
+          section.groups.length === 1 &&
+          section.groups[0]?.kind === "block" &&
+          section.groups[0].block.type === "geo_map";
+        if (onlyGeoMap) {
+          return <React.Fragment key={sectionIndex}>{body}</React.Fragment>;
+        }
         return (
           <section
             key={sectionIndex}

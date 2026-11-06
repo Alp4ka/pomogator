@@ -125,6 +125,19 @@ describe("callout grid grouping", () => {
     expect(groups).toEqual([{ kind: "block", block: { type: "callout", rich_text: [{ text: "один" }] } }]);
   });
 
+  it("keeps callouts with nested blocks full-width", () => {
+    const nested = {
+      type: "callout",
+      rich_text: [],
+      children: [{ type: "heading_4", rich_text: [{ text: "Важный текст" }] }],
+    };
+    const groups = groupBlocks([nested, nested]);
+    expect(groups).toEqual([
+      { kind: "block", block: nested },
+      { kind: "block", block: nested },
+    ]);
+  });
+
   it("keeps long callouts full-width instead of a two-column grid", () => {
     const groups = groupBlocks([
       {

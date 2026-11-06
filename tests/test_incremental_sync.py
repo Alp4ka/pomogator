@@ -161,6 +161,76 @@ async def test_import_refetches_legacy_callouts_and_keeps_notion_color(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_import_keeps_nested_blocks_inside_callout(monkeypatch):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(f"/pages/{ROOT}"):
+            return httpx.Response(200, json=_page_json(ROOT, "Brazil"), request=request)
+        if request.url.path.endswith(f"/blocks/{ROOT}/children"):
+            return httpx.Response(
+                200,
+                json=_blocks(
+                    {
+                        "id": "callout-1",
+                        "type": "callout",
+                        "has_children": True,
+                        "callout": {
+                            "rich_text": [],
+                            "icon": {"type": "emoji", "emoji": "❗"},
+                            "color": "blue_background",
+                        },
+                    }
+                ),
+                request=request,
+            )
+        if request.url.path.endswith("/blocks/callout-1/children"):
+            return httpx.Response(
+                200,
+                json=_blocks(
+                    {
+                        "id": "heading-1",
+                        "type": "heading_4",
+                        "has_children": False,
+                        "heading_4": {
+                            "rich_text": [
+                                {"plain_text": "CPF — это ваш налоговый номер.", "annotations": {}}
+                            ]
+                        },
+                    }
+                ),
+                request=request,
+            )
+        raise AssertionError(f"unexpected {request.url.path}")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = NotionClient("token", http=http, min_interval_seconds=0.01)
+        monkeypatch.setattr("pomogator.infrastructure.notion.client.asyncio.sleep", _no_sleep)
+        imported = await client.import_country(ROOT, "brazil", "🌍")
+
+    assert imported.root.document == [
+        {
+            "type": "callout",
+            "rich_text": [],
+            "checked": None,
+            "icon": "❗",
+            "color": "blue_background",
+            "children": [
+                {
+                    "type": "heading_4",
+                    "rich_text": [
+                        {
+                            "text": "CPF — это ваш налоговый номер.",
+                            "annotations": {},
+                        }
+                    ],
+                    "checked": None,
+                }
+            ],
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_import_walks_snapshot_children_and_databases(monkeypatch):
     calls: list[str] = []
 

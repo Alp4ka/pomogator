@@ -10,6 +10,7 @@ from pomogator.domain.pdf_trace import (
     unseal_trace,
 )
 from pomogator.infrastructure.pdf.render import (
+    _callout_runs,
     _cell_text,
     _color_emoji_image,
     _plain,
@@ -73,6 +74,21 @@ def test_split_callout_keeps_bold_title_and_body():
         "Кондиционер в квартире ОБЯЗАТЕЛЕН",
         "В жаркие месяцы без него спать почти невозможно.",
     )
+
+
+def test_callout_runs_fall_back_to_nested_blocks():
+    assert _callout_runs(
+        {
+            "type": "callout",
+            "rich_text": [],
+            "children": [
+                {
+                    "type": "heading_4",
+                    "rich_text": [{"text": "CPF — это ваш налоговый номер."}],
+                }
+            ],
+        }
+    ) == [{"text": "CPF — это ваш налоговый номер."}]
 
 
 def test_wrap_keeps_russian_paragraph_on_few_lines():

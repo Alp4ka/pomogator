@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Pomogator Telegram bot avatar">
+  <rect width="1024" height="1024" rx="248" fill="#1DB978"/>
+  <path
+    d="M252 482 512 256l260 226v276H610M414 758H252V482"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="72"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M512 360c-102 0-184 80-184 180 0 134 184 294 184 294s184-160 184-294c0-100-82-180-184-180Z"
+    fill="#14171D"
+  />
+  <circle cx="512" cy="538" r="66" fill="#FFFFFF"/>
+</svg>
