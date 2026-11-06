@@ -21,7 +21,7 @@
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "no-referrer"
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; img-src 'self' blob: data: https://i.ytimg.com https://img.youtube.com; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; child-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org https://maps.googleapis.com https://maps.gstatic.com; img-src 'self' blob: data: https://i.ytimg.com https://img.youtube.com https://*.googleapis.com https://*.gstatic.com https://maps.google.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://*.gstatic.com; frame-src https://www.youtube-nocookie.com https://www.youtube.com; child-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self' blob:; base-uri 'none'; object-src 'none'; form-action 'self'"
 	}
 }
