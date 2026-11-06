@@ -14,39 +14,26 @@ function readOsScheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function fallbackPalette(scheme: "light" | "dark"): Required<ThemeParams> {
+function brandPalette(scheme: "light" | "dark"): Required<ThemeParams> {
   if (scheme === "dark") {
     return {
-      bg_color: "#16181d",
-      text_color: "#f2f4f7",
-      hint_color: "#9aa3b2",
+      bg_color: "#111111",
+      text_color: "#ffffff",
+      hint_color: "#9b9a97",
       link_color: "#6ee7b0",
       button_color: "#1db978",
       button_text_color: "#ffffff",
-      secondary_bg_color: "#1e2229",
+      secondary_bg_color: "#111111",
     };
   }
   return {
-    bg_color: "#fafafa",
-    text_color: "#1a1d24",
+    bg_color: "#ffffff",
+    text_color: "#14171d",
     hint_color: "#5c6573",
     link_color: "#1b8f6a",
     button_color: "#1db978",
     button_text_color: "#ffffff",
     secondary_bg_color: "#ffffff",
-  };
-}
-
-function mergeTheme(params: ThemeParams | undefined, scheme: "light" | "dark"): Required<ThemeParams> {
-  const base = fallbackPalette(scheme);
-  return {
-    bg_color: params?.bg_color || base.bg_color,
-    text_color: params?.text_color || base.text_color,
-    hint_color: params?.hint_color || base.hint_color,
-    link_color: params?.link_color || base.link_color,
-    button_color: params?.button_color || base.button_color,
-    button_text_color: params?.button_text_color || base.button_text_color,
-    secondary_bg_color: params?.secondary_bg_color || base.secondary_bg_color,
   };
 }
 
@@ -62,7 +49,7 @@ export function applyTelegramChrome(): void {
 export function applyTheme(): "light" | "dark" {
   const tg = window.Telegram?.WebApp;
   const scheme = (tg?.colorScheme as "light" | "dark" | undefined) ?? readOsScheme();
-  const theme = mergeTheme(tg?.themeParams, scheme);
+  const theme = brandPalette(scheme);
   const root = document.documentElement;
   root.dataset.theme = scheme;
   root.style.colorScheme = scheme;
@@ -73,7 +60,7 @@ export function applyTheme(): "light" | "dark" {
   root.style.setProperty("--tg-theme-button-color", theme.button_color);
   root.style.setProperty("--tg-theme-button-text-color", theme.button_text_color);
   root.style.setProperty("--tg-theme-secondary-bg-color", theme.secondary_bg_color);
-  const chrome = scheme === "light" ? "#fafafa" : theme.bg_color;
+  const chrome = theme.bg_color;
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   if (themeMeta) themeMeta.setAttribute("content", chrome);
   tg?.setHeaderColor?.(chrome);
