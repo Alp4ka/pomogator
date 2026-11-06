@@ -32,7 +32,11 @@ services:
     depends_on: [worker]
     restart: unless-stopped
   frontend:
-    build: {context: ., dockerfile: frontend/Dockerfile}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_GOOGLE_MAPS_API_KEY: "${VITE_GOOGLE_MAPS_API_KEY:-}"
     restart: unless-stopped
   postgres:
     image: postgres:17-alpine

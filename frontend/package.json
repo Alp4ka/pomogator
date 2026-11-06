@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "@types/google.maps": "^3.66.9",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "eslint": "latest",

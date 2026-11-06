@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon, pickIcon, type IconName } from "./icons";
 
@@ -28,6 +28,35 @@ export type GeoMapBlock = {
 };
 
 const FALLBACK_COLORS = ["#e24b4b", "#e3a008", "#3f4a55", "#2f9a57", "#0288d1", "#9c27b0"];
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+
+let googleMapsPromise: Promise<typeof google> | null = null;
+
+function googleGlobal(): typeof google | undefined {
+  return (globalThis as typeof globalThis & { google?: typeof google }).google;
+}
+
+function loadGoogleMaps(apiKey: string): Promise<typeof google> {
+  const loaded = googleGlobal();
+  if (loaded?.maps) return Promise.resolve(loaded);
+  if (googleMapsPromise) return googleMapsPromise;
+
+  googleMapsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    const params = new URLSearchParams({ key: apiKey, v: "weekly", language: "ru", region: "BR" });
+    script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      const maps = googleGlobal();
+      if (maps?.maps) resolve(maps);
+      else reject(new Error("Google Maps API did not initialize"));
+    };
+    script.onerror = () => reject(new Error("Google Maps API failed to load"));
+    document.head.append(script);
+  });
+  return googleMapsPromise;
+}
 
 type LayerLook = { icon: IconName; color: string; short: string };
 
@@ -62,9 +91,8 @@ function googleDirectionsUrl(place: GeoPlace): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${place.lat.toFixed(6)},${place.lng.toFixed(6)}`;
 }
 
-function googleMyMapsEmbed(mapId: string): string {
-  const params = new URLSearchParams({ mid: mapId });
-  return `https://www.google.com/maps/d/embed?${params.toString()}`;
+function googleMyMapsUrl(mapId: string): string {
+  return `https://www.google.com/maps/d/viewer?mid=${encodeURIComponent(mapId)}`;
 }
 
 function itemWash(color: string): string {
@@ -82,18 +110,87 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
     return source.filter(Boolean).map((name) => ({ name, ...layerLook(name) }));
   }, [map.layers, places]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error" | "unconfigured">(
+    GOOGLE_MAPS_API_KEY ? "loading" : "unconfigured",
+  );
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const googleMapRef = useRef<google.maps.Map | null>(null);
   const selected = places.find((place) => place.id === selectedId) ?? places[0] ?? null;
   const selectedLook = selected ? layerLook(selected.layer) : null;
-  const embedSrc = map.map_id ? googleMyMapsEmbed(map.map_id) : "";
+  const externalMapUrl = map.source_url || googleMyMapsUrl(map.map_id);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setMapReady(true), 4500);
-    return () => window.clearTimeout(timer);
-  }, [embedSrc]);
+    const host = mapHostRef.current;
+    if (!host || !GOOGLE_MAPS_API_KEY || !places.length) return;
+
+    let disposed = false;
+    let tilesListener: google.maps.MapsEventListener | null = null;
+    let watchdog: number | null = null;
+    const markers: google.maps.Marker[] = [];
+
+    void loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+      .then((maps) => {
+        if (disposed) return;
+        const bounds = new maps.maps.LatLngBounds();
+        const instance = new maps.maps.Map(host, {
+          center: { lat: places[0]!.lat, lng: places[0]!.lng },
+          zoom: 12,
+          disableDefaultUI: true,
+          zoomControl: true,
+          fullscreenControl: true,
+          clickableIcons: false,
+          gestureHandling: "cooperative",
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+        googleMapRef.current = instance;
+
+        for (const place of places) {
+          const look = layerLook(place.layer);
+          const marker = new maps.maps.Marker({
+            map: instance,
+            position: { lat: place.lat, lng: place.lng },
+            title: place.name,
+            icon: {
+              path: maps.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: place.color || look.color,
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeOpacity: 1,
+              strokeWeight: 2,
+            },
+          });
+          marker.addListener("click", () => setSelectedId(place.id));
+          markers.push(marker);
+          bounds.extend(marker.getPosition()!);
+        }
+
+        instance.fitBounds(bounds, 34);
+        tilesListener = maps.maps.event.addListenerOnce(instance, "tilesloaded", () => {
+          if (!disposed) setMapStatus("ready");
+        });
+        watchdog = window.setTimeout(() => {
+          if (!disposed) setMapStatus("ready");
+        }, 8000);
+      })
+      .catch(() => {
+        if (!disposed) setMapStatus("error");
+      });
+
+    return () => {
+      disposed = true;
+      if (watchdog !== null) window.clearTimeout(watchdog);
+      tilesListener?.remove();
+      for (const marker of markers) marker.setMap(null);
+      googleMapRef.current = null;
+    };
+  }, [places]);
 
   function focusPlace(place: GeoPlace) {
     setSelectedId(place.id);
+    googleMapRef.current?.panTo({ lat: place.lat, lng: place.lng });
+    googleMapRef.current?.setZoom(15);
   }
 
   if (!map.map_id && !places.length) {
@@ -108,19 +205,22 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
   return (
     <section className="geo-card">
       <h3 className="geo-card-title">Карта города</h3>
-      {embedSrc ? (
+      {GOOGLE_MAPS_API_KEY && places.length ? (
         <div className="geo-map-frame">
-          <iframe
-            className="geo-map-frame-embed"
-            src={embedSrc}
-            title={map.title || "Карта города"}
-            referrerPolicy="no-referrer-when-downgrade"
-            allowFullScreen
-          />
-          {!mapReady ? <div className="geo-map-pending">Загружаем карту и точки…</div> : null}
+          <div ref={mapHostRef} className="geo-map-canvas" aria-label={map.title || "Карта города"} />
+          {mapStatus === "loading" ? <div className="geo-map-pending">Загружаем карту и точки…</div> : null}
+          {mapStatus === "error" ? (
+            <div className="geo-map-fallback">
+              <span>Google Maps не загрузилась</span>
+              <a href={externalMapUrl} target="_blank" rel="noreferrer">Открыть карту</a>
+            </div>
+          ) : null}
         </div>
       ) : (
-        <p className="geo-card-empty">Нажмите «Обновить», чтобы загрузить карту из Google Maps.</p>
+        <a className="geo-map-unconfigured" href={externalMapUrl} target="_blank" rel="noreferrer">
+          <strong>Открыть карту в Google Maps</strong>
+          <span>Карта откроется в отдельном окне</span>
+        </a>
       )}
       {legend.length ? (
         <div className="geo-legend" role="list">
