@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Icon, pickIcon, type IconName } from "./icons";
 
@@ -83,25 +83,17 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
   }, [map.layers, places]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const readyTimer = useRef<number | null>(null);
   const selected = places.find((place) => place.id === selectedId) ?? places[0] ?? null;
   const selectedLook = selected ? layerLook(selected.layer) : null;
   const embedSrc = map.map_id ? googleMyMapsEmbed(map.map_id) : "";
 
-  useEffect(
-    () => () => {
-      if (readyTimer.current !== null) window.clearTimeout(readyTimer.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMapReady(true), 4500);
+    return () => window.clearTimeout(timer);
+  }, [embedSrc]);
 
   function focusPlace(place: GeoPlace) {
     setSelectedId(place.id);
-  }
-
-  function markMapLoaded() {
-    if (readyTimer.current !== null) window.clearTimeout(readyTimer.current);
-    readyTimer.current = window.setTimeout(() => setMapReady(true), 4500);
   }
 
   if (!map.map_id && !places.length) {
@@ -124,7 +116,6 @@ export function GeoMapCard({ map }: { map: GeoMapBlock }) {
             title={map.title || "Карта города"}
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
-            onLoad={markMapLoaded}
           />
           {!mapReady ? <div className="geo-map-pending">Загружаем карту и точки…</div> : null}
         </div>
